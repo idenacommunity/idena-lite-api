@@ -5,7 +5,30 @@ const cache = require('../cache');
 
 const rpc = new IdenaRPC();
 
-// GET /api/epoch/current
+/**
+ * @swagger
+ * /api/epoch/current:
+ *   get:
+ *     summary: Get current epoch
+ *     description: Retrieves information about the current Idena epoch
+ *     tags: [Epoch]
+ *     responses:
+ *       200:
+ *         description: Current epoch information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 result:
+ *                   $ref: '#/components/schemas/Epoch'
+ *       500:
+ *         description: Failed to fetch epoch data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/current', async (req, res, next) => {
   try {
     const cacheKey = cache.generateKey('epoch', 'current');
@@ -36,7 +59,30 @@ router.get('/current', async (req, res, next) => {
   }
 });
 
-// GET /api/epoch/intervals
+/**
+ * @swagger
+ * /api/epoch/intervals:
+ *   get:
+ *     summary: Get ceremony intervals
+ *     description: Retrieves the timing intervals for validation ceremony phases
+ *     tags: [Epoch]
+ *     responses:
+ *       200:
+ *         description: Ceremony interval timings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 result:
+ *                   $ref: '#/components/schemas/CeremonyIntervals'
+ *       500:
+ *         description: Failed to fetch ceremony intervals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/intervals', async (req, res, next) => {
   try {
     const cacheKey = cache.generateKey('epoch', 'intervals');

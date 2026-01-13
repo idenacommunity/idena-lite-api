@@ -5,7 +5,47 @@ const cache = require('../cache');
 
 const rpc = new IdenaRPC();
 
-// GET /api/identity/:address
+/**
+ * @swagger
+ * /api/identity/{address}:
+ *   get:
+ *     summary: Get identity by address
+ *     description: Retrieves identity information for a specific Idena address
+ *     tags: [Identity]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address (0x followed by 40 hex characters)
+ *         example: '0x1234567890abcdef1234567890abcdef12345678'
+ *     responses:
+ *       200:
+ *         description: Identity found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 result:
+ *                   $ref: '#/components/schemas/Identity'
+ *                 cached:
+ *                   type: boolean
+ *       400:
+ *         description: Invalid address format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Identity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:address', async (req, res, next) => {
   try {
     const { address } = req.params;
@@ -51,7 +91,53 @@ router.get('/:address', async (req, res, next) => {
   }
 });
 
-// GET /api/identity/:address/stake
+/**
+ * @swagger
+ * /api/identity/{address}/stake:
+ *   get:
+ *     summary: Get identity stake
+ *     description: Retrieves the stake amount for a specific Idena address
+ *     tags: [Identity]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *         example: '0x1234567890abcdef1234567890abcdef12345678'
+ *     responses:
+ *       200:
+ *         description: Stake information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 address:
+ *                   type: string
+ *                   description: Idena address
+ *                 stake:
+ *                   type: string
+ *                   description: Stake amount
+ *                   example: '1000.5'
+ *                 unit:
+ *                   type: string
+ *                   example: 'iDNA'
+ *       400:
+ *         description: Invalid address format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Identity not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:address/stake', async (req, res, next) => {
   try {
     const { address } = req.params;
@@ -95,7 +181,55 @@ router.get('/:address/stake', async (req, res, next) => {
   }
 });
 
-// GET /api/identities?limit=100&offset=0&states=Human,Verified&minStake=1000
+/**
+ * @swagger
+ * /api/identity:
+ *   get:
+ *     summary: Get all identities
+ *     description: Retrieves a paginated list of identities with optional filtering
+ *     tags: [Identity]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 1000
+ *           default: 100
+ *         description: Number of results per page (max 1000)
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: Offset from the beginning
+ *       - in: query
+ *         name: states
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of identity states to filter
+ *         example: 'Human,Verified'
+ *       - in: query
+ *         name: minStake
+ *         schema:
+ *           type: number
+ *         description: Minimum stake amount to filter
+ *         example: 1000
+ *     responses:
+ *       200:
+ *         description: List of identities
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedIdentities'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/', async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 100, 1000);

@@ -5,7 +5,27 @@ const cache = require('../cache');
 
 const rpc = new IdenaRPC();
 
-// GET /api/health
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: Get API health status
+ *     description: Returns the health status of the API, Idena RPC node, and cache
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: API is healthy and RPC node is connected
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HealthResponse'
+ *       503:
+ *         description: API is operational but RPC node is unavailable
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HealthResponse'
+ */
 router.get('/health', async (req, res) => {
   try {
     const nodeHealth = await rpc.getNodeHealth();
@@ -39,7 +59,28 @@ router.get('/health', async (req, res) => {
   }
 });
 
-// GET /api/ping
+/**
+ * @swagger
+ * /api/ping:
+ *   get:
+ *     summary: Ping the API
+ *     description: Simple ping endpoint to check if the API is responding
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: API is responding
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pong:
+ *                   type: boolean
+ *                   example: true
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ */
 router.get('/ping', (req, res) => {
   res.json({
     pong: true,

@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 require('dotenv').config({ quiet: true });
 
 const identityRoutes = require('./routes/identity');
@@ -24,6 +26,13 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Swagger documentation
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api/docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
 // Routes
 app.use('/api', healthRoutes);
 app.use('/api/identity', identityRoutes);
@@ -38,11 +47,12 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/api/health',
       identity: '/api/identity/:address',
-      identities: '/api/identities?limit=100&offset=0',
+      identities: '/api/identity?limit=100&offset=0',
       epoch: '/api/epoch/current',
       stake: '/api/identity/:address/stake',
+      docs: '/api/docs',
     },
-    documentation: 'https://github.com/idena-community/idena-lite-api',
+    documentation: 'https://github.com/idenacommunity/idena-lite-api',
     rpcNode: process.env.IDENA_RPC_URL || 'Not configured',
   });
 });
