@@ -66,6 +66,8 @@ tests/
 .github/
 ├── workflows/ci.yml    # GitHub Actions CI pipeline
 └── dependabot.yml      # Automated dependency updates
+
+eslint.config.js        # ESLint 9 flat config
 ```
 
 ## CI/CD
@@ -290,23 +292,25 @@ GET /api/epoch/intervals
 ## Key Dependencies
 
 **Core:**
-- `express` ^4.18.2: Web framework
-- `axios` ^1.6.0: HTTP client for JSON-RPC calls
-- `redis` ^4.6.11: Caching layer
+- `express` ^5.2.1: Web framework
+- `axios` ^1.7.9: HTTP client for JSON-RPC calls
+- `redis` ^5.10.0: Caching layer
 
 **Security & Middleware:**
-- `helmet` ^7.1.0: Security headers
+- `helmet` ^8.1.0: Security headers
 - `cors` ^2.8.5: CORS handling
-- `express-rate-limit` ^7.1.5: Rate limiting
-- `dotenv` ^16.3.1: Environment variable management
+- `express-rate-limit` ^8.2.1: Rate limiting
+- `dotenv` ^17.2.3: Environment variable management
 
 **Dev Dependencies:**
-- `eslint` ^8.57.0: JavaScript linter
-- `eslint-config-prettier` ^9.1.0: Disables ESLint rules that conflict with Prettier
-- `jest` ^29.7.0: Testing framework
-- `nodemon` ^3.0.2: Hot reload for development
-- `prettier` ^3.2.5: Code formatter
-- `supertest` ^6.3.3: HTTP assertion library
+- `@eslint/js` ^9.39.2: ESLint recommended rules
+- `eslint` ^9.39.2: JavaScript linter (flat config format)
+- `eslint-config-prettier` ^10.1.8: Disables ESLint rules that conflict with Prettier
+- `globals` ^16.3.0: Global variable definitions for ESLint
+- `jest` ^30.2.0: Testing framework
+- `nodemon` ^3.1.10: Hot reload for development
+- `prettier` ^3.5.3: Code formatter
+- `supertest` ^7.2.2: HTTP assertion library
 
 **Node Version:** >=18.0.0
 
