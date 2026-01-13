@@ -3,13 +3,42 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.18+-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
+[![Development Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/idenacommunity/idena-lite-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/idenacommunity/idena-lite-api?style=social)](https://github.com/idenacommunity/idena-lite-api/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/idenacommunity/idena-lite-api?style=social)](https://github.com/idenacommunity/idena-lite-api/network/members)
 
 **Community-maintained lightweight API for the Idena blockchain**
 
-A fast, reliable, and easy-to-deploy alternative to `api.idena.io` built by the Idena community.
+A lightweight alternative to `api.idena.io` built by the Idena community.
+
+---
+
+## ⚠️ Development Status
+
+**IMPORTANT: This project is in alpha stage and NOT yet tested in production.**
+
+- ❌ **Not production-ready** - Under active development
+- ⚠️ **Limited testing** - Basic functionality not fully tested
+- 🔄 **Alpha stage** - API endpoints may change
+- 🧪 **Needs testing** - Test suite in development
+- 📝 **Incomplete docs** - Some endpoints not documented
+
+**Use at your own risk. Do not rely on this for critical applications yet.**
+
+### What Works
+- ✅ Basic Express server setup
+- ✅ Docker configuration
+- ✅ RPC client structure
+
+### What Needs Work
+- ⚠️ API endpoint implementation
+- ⚠️ Redis caching integration
+- ⚠️ Comprehensive testing
+- ⚠️ Error handling
+- ⚠️ Production deployment validation
+
+---
 
 ## 🎯 Purpose
 
@@ -169,14 +198,57 @@ npm install
 # Copy environment file
 cp .env.example .env
 
-# Start in development mode
+# Start in development mode (with auto-reload)
 npm run dev
+
+# Start in production mode
+npm start
 ```
 
 ### Testing
 
+The project includes a comprehensive test suite using Jest and Supertest.
+
+**Run tests:**
 ```bash
+# Run all tests
 npm test
+
+# Run tests in watch mode (for development)
+npm run test:watch
+
+# Run tests with coverage report
+npm run test:coverage
+```
+
+**Test structure:**
+```
+tests/
+├── server.test.js      # Server setup and middleware tests
+├── rpc.test.js         # RPC client unit tests
+└── health.test.js      # Health endpoint integration tests
+```
+
+**What's tested:**
+- ✅ Express server initialization
+- ✅ Security headers (Helmet)
+- ✅ Rate limiting
+- ✅ RPC client methods
+- ✅ Health endpoints
+- ✅ Error handling
+- ✅ 404 responses
+
+**Before deploying:**
+```bash
+# 1. Run tests
+npm test
+
+# 2. Check coverage (aim for >80%)
+npm run test:coverage
+
+# 3. Test with real Idena node
+# Edit .env to point to a test node
+IDENA_RPC_URL=https://rpc.idio.network npm test
 ```
 
 ### Building Docker Image
@@ -203,13 +275,11 @@ We welcome contributions! Here's how:
 
 ## 🌐 Community Instances
 
-Public instances maintained by the community:
+**No public instances available yet.**
 
-- `https://api1.idena.community` (EU)
-- `https://api2.idena.community` (US)
-- `https://api3.idena.community` (Asia)
+This project is still in alpha development. Once tested and stable, community members can deploy public instances.
 
-**Want to add yours?** Open a PR!
+**Want to be the first?** Test the API and open a PR to add your instance!
 
 ## 💬 Support
 
@@ -231,6 +301,7 @@ Special thanks to:
 
 ---
 
-**⚡ Status**: Production Ready  
-**🔄 Version**: 1.0.0  
+**⚡ Status**: Alpha - NOT Production Ready
+**🔄 Version**: 0.1.0-alpha
 **👥 Maintainer**: Idena Community
+**⚠️ Warning**: Experimental software - Needs testing before production use
