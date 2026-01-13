@@ -93,18 +93,10 @@ router.get('/:heightOrHash', async (req, res, next) => {
         blockData = await rpc.getBlockByHash(heightOrHash);
       }
     }
-    // Check if it's a valid block height (positive integer)
+    // Check if it's a valid block height (non-negative integer)
+    // Note: /^\d+$/ only matches non-negative integers, so no need to check height < 0
     else if (/^\d+$/.test(heightOrHash)) {
       const height = parseInt(heightOrHash, 10);
-
-      if (height < 0) {
-        return res.status(400).json({
-          error: {
-            message: 'Block height must be a non-negative integer',
-            status: 400,
-          },
-        });
-      }
 
       cacheKey = cache.generateKey('block', 'height', height.toString());
 
