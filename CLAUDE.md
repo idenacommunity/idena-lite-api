@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Project Status
 - **Visibility**: Public repository on GitHub (https://github.com/idenacommunity/idena-lite-api)
-- **Status**: Production ready, ongoing development
+- **Status**: Alpha (0.1.0-alpha), ongoing development
 - **Maintenance**: Community-maintained by anonymous contributors
 - **Contributions**: All contributions welcome, but must follow anonymity guidelines
 - **Purpose**: Decentralized alternative to centralized api.idena.io
@@ -52,20 +52,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 src/
-├── server.js                    # Express server entry point
-├── routes/                      # API route handlers
-│   ├── identity.js              # Identity endpoints
-│   ├── epoch.js                 # Epoch endpoints
-│   └── health.js                # Health check
-├── services/
-│   ├── rpc.js                   # Idena RPC client wrapper
-│   └── cache.js                 # Redis caching layer
-├── middleware/                  # Express middleware
-│   ├── rateLimit.js             # Rate limiting
-│   ├── cors.js                  # CORS configuration
-│   └── errorHandler.js          # Error handling
-└── utils/                       # Helper functions
-    └── logger.js                # Logging utilities
+├── server.js           # Express server entry point, middleware setup, route registration
+├── rpc.js              # Idena RPC client (axios-based JSON-RPC calls)
+├── cache.js            # Redis caching singleton with TTL support
+└── routes/
+    ├── identity.js     # GET /api/identity/:address, /api/identity/:address/stake, /api/identities
+    ├── epoch.js        # GET /api/epoch/current, /api/epoch/intervals
+    └── health.js       # GET /api/health, /api/ping
+
+tests/
+└── server.test.js      # Jest + supertest API tests
 ```
 
 ## Common Commands
@@ -81,14 +77,23 @@ cp .env.example .env
 # Edit configuration (set IDENA_RPC_URL)
 nano .env
 
-# Run in development mode (with hot reload)
+# Run in development mode (with hot reload via nodemon)
 npm run dev
 
 # Run in production mode
 npm start
+```
 
-# Run tests
+### Testing
+```bash
+# Run all tests
 npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
 ```
 
 ### Docker
@@ -98,7 +103,7 @@ npm run docker:build
 # or
 docker build -t idena-lite-api:latest .
 
-# Run with Docker Compose
+# Run with Docker Compose (includes Redis)
 npm run docker:run
 # or
 docker-compose up -d
@@ -111,21 +116,6 @@ docker-compose down
 
 # Check health
 curl http://localhost:3000/api/health
-```
-
-### Development
-```bash
-# Install dev dependencies
-npm install --dev
-
-# Run linter
-npm run lint
-
-# Format code
-npm run format
-
-# Watch mode (auto-restart on changes)
-npm run dev
 ```
 
 ## Configuration
@@ -184,29 +174,39 @@ Rate Limiter (100 req/min per IP)
   ↓
 CORS & Security Headers (Helmet.js)
   ↓
-Cache Check (Redis)
-  ↓ (cache miss)
-RPC Client (axios) → Idena Node
+Route Handler
   ↓
-Cache Store (Redis, TTL: 5min)
+Cache Check (Redis via cache.js)
+  ↓ (cache miss)
+RPC Client (rpc.js via axios) → Idena Node
+  ↓
+Cache Store (Redis, endpoint-specific TTL)
   ↓
 JSON Response
 ```
 
 **Key Characteristics:**
 - No database required (stateless)
-- Optional Redis for caching (works without it)
+- Optional Redis for caching (graceful degradation if unavailable)
 - Direct RPC passthrough for uncached queries
 - Horizontal scaling via shared Redis
-- Self-healing (restarts RPC connection on failure)
+- Automatic reconnection on Redis failure (10 retry attempts)
 
-### Middleware Pipeline
+### Middleware Pipeline (server.js)
 
-1. **Helmet.js**: Security headers (XSS, CSP, etc.)
-2. **CORS**: Cross-origin resource sharing
-3. **Rate Limiter**: 100 requests/minute/IP (configurable)
-4. **Request Logger**: Structured logging with Winston
-5. **Error Handler**: Centralized error handling and formatting
+1. **Helmet.js**: Security headers (XSS protection, content type sniffing prevention)
+2. **CORS**: Cross-origin resource sharing (enabled by default)
+3. **express.json()**: JSON body parsing
+4. **Rate Limiter**: 100 requests/minute/IP via express-rate-limit
+5. **Error Handler**: Centralized error handling with status codes
+
+### Cache TTL Strategy (per endpoint)
+
+- Identity: 300s (5 minutes)
+- Stake: 300s (5 minutes)
+- Identities list: 120s (2 minutes - more volatile)
+- Epoch current: 60s (1 minute)
+- Epoch intervals: 600s (10 minutes - rarely changes)
 
 ## API Endpoints
 
@@ -262,18 +262,19 @@ GET /api/epoch/intervals
 
 **Core:**
 - `express` ^4.18.2: Web framework
-- `axios` ^1.6.0: HTTP client for RPC calls
+- `axios` ^1.6.0: HTTP client for JSON-RPC calls
 - `redis` ^4.6.11: Caching layer
 
-**Middleware:**
+**Security & Middleware:**
 - `helmet` ^7.1.0: Security headers
 - `cors` ^2.8.5: CORS handling
 - `express-rate-limit` ^7.1.5: Rate limiting
 - `dotenv` ^16.3.1: Environment variable management
 
-**Utilities:**
-- `winston`: Logging (optional)
-- `joi`: Request validation (optional)
+**Dev Dependencies:**
+- `nodemon` ^3.0.2: Hot reload for development
+- `jest` ^29.7.0: Testing framework
+- `supertest` ^6.3.3: HTTP assertion library
 
 **Node Version:** >=18.0.0
 
@@ -293,32 +294,41 @@ GET /api/epoch/intervals
 ### Adding New Endpoints
 
 1. Create route file in `src/routes/` (e.g., `blocks.js`)
-2. Define Express routes with middleware
-3. Implement RPC calls via `rpc.js` service
-4. Add caching logic via `cache.js` service
-5. Register routes in `src/server.js`
-6. Test endpoint with curl or Postman
-7. Update documentation
+2. Import `IdenaRPC` from `../rpc` and `cache` from `../cache`
+3. Define Express router with async handlers
+4. Add address validation (regex: `/^0x[a-fA-F0-9]{40}$/`)
+5. Implement cache-first pattern: check cache → RPC call → store in cache
+6. Register routes in `src/server.js`: `app.use('/api/blocks', blocksRoutes)`
+7. Write tests in `tests/`
 
 ### Modifying RPC Calls
 
-1. Edit `src/services/rpc.js`
-2. Add new RPC method wrapper
-3. Handle errors and timeouts
-4. Return normalized data format
-5. Test with actual Idena node
-
-### Adjusting Cache Strategy
-
-In `src/services/cache.js`:
+Edit `src/rpc.js`:
 
 ```javascript
-// Per-endpoint TTL
-const CACHE_TTLS = {
-  'identity': 300,      // 5 minutes
-  'epoch': 60,          // 1 minute
-  'balance': 120,       // 2 minutes
-};
+// Add new method to IdenaRPC class
+async getBlock(height) {
+  return await this.call('dna_block', [height]);
+}
+```
+
+Key RPC methods available:
+- `dna_identity` - Get identity by address
+- `dna_identities` - Get all identities
+- `dna_epoch` - Get current epoch info
+- `dna_ceremonyIntervals` - Get validation ceremony timing
+
+### Cache Pattern
+
+In route handlers:
+
+```javascript
+const cacheKey = cache.generateKey('prefix', ...params);
+let data = await cache.get(cacheKey);
+if (!data) {
+  data = await rpc.someMethod();
+  await cache.set(cacheKey, data, TTL_SECONDS);
+}
 ```
 
 ### Testing Changes
@@ -335,8 +345,8 @@ curl http://localhost:3000/api/health
 curl http://localhost:3000/api/identity/0x...
 curl http://localhost:3000/api/epoch/current
 
-# Check rate limiting
-for i in {1..150}; do curl http://localhost:3000/api/health; done
+# Run automated tests
+npm test
 ```
 
 ## Performance
@@ -520,6 +530,6 @@ See the main repository CLAUDE.md (`../../../CLAUDE.md`) for full ecosystem over
 
 ---
 
-**Status:** Production Ready
-**Version:** 1.0.0
+**Status:** Alpha (active development)
+**Version:** 0.1.0-alpha
 **Maintainer:** Idena Community
