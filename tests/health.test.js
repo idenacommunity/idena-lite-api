@@ -1,3 +1,14 @@
+// Mock the IdenaRPC class BEFORE requiring anything
+jest.mock('../src/rpc', () => {
+  return jest.fn().mockImplementation(() => ({
+    getNodeHealth: jest.fn().mockResolvedValue({
+      healthy: true,
+      currentEpoch: 100,
+      timestamp: new Date().toISOString()
+    })
+  }));
+});
+
 const request = require('supertest');
 const app = require('../src/server');
 
@@ -7,7 +18,7 @@ describe('Health Endpoint', () => {
       const response = await request(app)
         .get('/api/health')
         .expect('Content-Type', /json/);
-      
+
       expect(response.body).toHaveProperty('api');
       expect(response.body.api).toHaveProperty('status');
       expect(response.body.api).toHaveProperty('version');
@@ -17,10 +28,17 @@ describe('Health Endpoint', () => {
 
     it('should include cache status', async () => {
       const response = await request(app).get('/api/health');
-      
+
       expect(response.body).toHaveProperty('cache');
       expect(response.body.cache).toHaveProperty('status');
       expect(response.body.cache).toHaveProperty('enabled');
+    });
+
+    it('should include node health', async () => {
+      const response = await request(app).get('/api/health');
+
+      expect(response.body).toHaveProperty('idenaNode');
+      expect(response.body.idenaNode).toHaveProperty('healthy');
     });
   });
 
@@ -30,14 +48,14 @@ describe('Health Endpoint', () => {
         .get('/api/ping')
         .expect(200)
         .expect('Content-Type', /json/);
-      
+
       expect(response.body).toHaveProperty('pong', true);
       expect(response.body).toHaveProperty('timestamp');
     });
 
     it('should return timestamp in ISO format', async () => {
       const response = await request(app).get('/api/ping');
-      
+
       const timestamp = response.body.timestamp;
       expect(timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
       expect(new Date(timestamp).toString()).not.toBe('Invalid Date');

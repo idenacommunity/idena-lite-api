@@ -13,9 +13,10 @@ describe('IdenaRPC Client', () => {
   });
 
   describe('constructor', () => {
-    it('should initialize with default URL', () => {
+    it('should initialize with default URL from env', () => {
       const defaultRpc = new IdenaRPC();
-      expect(defaultRpc.url).toBe('http://localhost:9009');
+      // In test environment, should use IDENA_RPC_URL from .env.test
+      expect(defaultRpc.url).toBe(process.env.IDENA_RPC_URL || 'http://localhost:9009');
     });
 
     it('should initialize with custom URL', () => {

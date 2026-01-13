@@ -10,5 +10,6 @@ module.exports = {
     '**/tests/**/*.test.js'
   ],
   verbose: true,
-  testTimeout: 10000
+  testTimeout: 10000,
+  setupFiles: ['<rootDir>/tests/setup.js']
 };

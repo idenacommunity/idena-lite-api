@@ -68,10 +68,13 @@ app.use((req, res) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 idena-lite-api running on port ${PORT}`);
-  console.log(`📡 Connected to RPC: ${process.env.IDENA_RPC_URL || 'http://localhost:9009'}`);
-  console.log(`💾 Redis: ${process.env.REDIS_URL || 'localhost:6379'}`);
-});
+// Only start server if this file is run directly (not imported for tests)
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 idena-lite-api running on port ${PORT}`);
+    console.log(`📡 Connected to RPC: ${process.env.IDENA_RPC_URL || 'http://localhost:9009'}`);
+    console.log(`💾 Redis: ${process.env.REDIS_URL || 'localhost:6379'}`);
+  });
+}
 
 module.exports = app;
