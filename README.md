@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml/badge.svg)](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![Express](https://img.shields.io/badge/Express-4.18+-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
 [![Development Status](https://img.shields.io/badge/Status-Alpha-orange)](https://github.com/idenacommunity/idena-lite-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -103,6 +103,26 @@ GET /api/epoch/current
 # Get ceremony intervals
 GET /api/epoch/intervals
 ```
+
+## 📖 API Documentation
+
+Interactive API documentation is available via Swagger UI:
+
+```bash
+# Swagger UI (interactive documentation)
+GET /api/docs
+
+# OpenAPI JSON specification
+GET /api/docs.json
+```
+
+**Features:**
+- Interactive endpoint testing
+- Request/response schemas
+- Parameter descriptions
+- Error response documentation
+
+Access the documentation at `http://localhost:3000/api/docs` when running locally.
 
 ## 🔧 Configuration
 
