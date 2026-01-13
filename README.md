@@ -1,5 +1,12 @@
 # idena-lite-api
 
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Express](https://img.shields.io/badge/Express-4.18+-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/idenacommunity/idena-lite-api?style=social)](https://github.com/idenacommunity/idena-lite-api/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/idenacommunity/idena-lite-api?style=social)](https://github.com/idenacommunity/idena-lite-api/network/members)
+
 **Community-maintained lightweight API for the Idena blockchain**
 
 A fast, reliable, and easy-to-deploy alternative to `api.idena.io` built by the Idena community.
