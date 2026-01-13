@@ -54,7 +54,7 @@ Replace the centralized `api.idena.io` with decentralized, community-owned infra
 
 ### Prerequisites
 - Docker and Docker Compose installed
-- Access to an Idena RPC node (your own or community node)
+- Access to an Idena RPC node (see [RPC Node Requirements](#rpc-node-requirements))
 
 ### Deploy in 5 minutes
 
@@ -164,17 +164,42 @@ Access the documentation at `http://localhost:3000/api/docs` when running locall
 | `REDIS_ENABLED` | Enable/disable caching | `true` |
 | `CACHE_TTL` | Cache duration in seconds | `300` (5 min) |
 
-### Using Community RPC Nodes
+### RPC Node Requirements
 
-Don't want to run your own node? Use community nodes:
+⚠️ **Important:** This API requires access to an Idena RPC node that accepts JSON-RPC POST requests.
+
+**Option 1: Run Your Own Node (Recommended)**
+
+```bash
+# Using Docker
+docker run -d -p 9009:9009 idena/idena-go
+
+# Then configure
+IDENA_RPC_URL=http://localhost:9009
+```
+
+Running your own node provides:
+- Full control and reliability
+- No rate limiting or Cloudflare blocks
+- Access to all RPC methods
+
+**Option 2: Private RPC Access**
+
+If you have API key access to a private Idena RPC endpoint:
 
 ```env
-# Option 1
-IDENA_RPC_URL=https://rpc.idio.network
-
-# Option 2
-IDENA_RPC_URL=https://rpc.holismo.org
+IDENA_RPC_URL=https://your-private-rpc.example.com
+IDENA_API_KEY=your-api-key
 ```
+
+**⚠️ Public Community Nodes May Not Work**
+
+Public community RPC nodes (e.g., `rpc.holismo.org`, `rpc.idio.network`) often have Cloudflare protection that blocks direct JSON-RPC POST requests, returning 405 errors. These nodes may require:
+- Special authentication headers
+- API key access
+- Specific client configurations
+
+If you encounter 405 errors, you'll need to run your own node or obtain private RPC access.
 
 ## 🏗️ Production Deployment
 
@@ -288,15 +313,15 @@ tests/
 
 **Before deploying:**
 ```bash
-# 1. Run tests
+# 1. Run tests (uses mocked RPC responses)
 npm test
 
 # 2. Check coverage (aim for >80%)
 npm run test:coverage
 
-# 3. Test with real Idena node
-# Edit .env to point to a test node
-IDENA_RPC_URL=https://rpc.idio.network npm test
+# 3. Test with real Idena node (requires your own node)
+# See RPC Node Requirements section
+IDENA_RPC_URL=http://localhost:9009 npm run dev
 ```
 
 ### Building Docker Image
