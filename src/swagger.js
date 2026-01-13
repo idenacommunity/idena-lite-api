@@ -41,6 +41,10 @@ const options = {
         description: 'Transaction information',
       },
       {
+        name: 'Block',
+        description: 'Block information',
+      },
+      {
         name: 'Epoch',
         description: 'Epoch and validation ceremony information',
       },

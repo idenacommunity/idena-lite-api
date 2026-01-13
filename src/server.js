@@ -11,6 +11,7 @@ const epochRoutes = require('./routes/epoch');
 const healthRoutes = require('./routes/health');
 const balanceRoutes = require('./routes/balance');
 const transactionRoutes = require('./routes/transaction');
+const blockRoutes = require('./routes/block');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,6 +42,7 @@ app.use('/api/identity', identityRoutes);
 app.use('/api/epoch', epochRoutes);
 app.use('/api/balance', balanceRoutes);
 app.use('/api/transaction', transactionRoutes);
+app.use('/api/block', blockRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -54,6 +56,7 @@ app.get('/', (req, res) => {
       identities: '/api/identity?limit=100&offset=0',
       balance: '/api/balance/:address',
       transaction: '/api/transaction/:hash',
+      block: '/api/block/:heightOrHash',
       epoch: '/api/epoch/current',
       stake: '/api/identity/:address/stake',
       docs: '/api/docs',

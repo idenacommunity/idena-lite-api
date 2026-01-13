@@ -78,6 +78,15 @@ class IdenaRPC {
     return this.call('bcn_transaction', [hash]);
   }
 
+  // Block methods
+  getBlockByHeight(height) {
+    return this.call('bcn_blockAt', [height]);
+  }
+
+  getBlockByHash(hash) {
+    return this.call('bcn_block', [hash]);
+  }
+
   // Health check
   async getNodeHealth() {
     try {
