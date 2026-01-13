@@ -112,3 +112,4 @@ const cache = new Cache();
 cache.connect();
 
 module.exports = cache;
+module.exports.Cache = Cache;
