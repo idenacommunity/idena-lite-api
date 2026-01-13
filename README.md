@@ -299,7 +299,15 @@ npm run test:coverage
 tests/
 ├── server.test.js      # Server setup and middleware tests
 ├── rpc.test.js         # RPC client unit tests
-└── health.test.js      # Health endpoint integration tests
+├── cache.test.js       # Redis cache unit tests
+├── health.test.js      # Health endpoint tests
+├── identity.test.js    # Identity endpoint tests
+├── balance.test.js     # Balance endpoint tests
+├── transaction.test.js # Transaction endpoint tests
+├── block.test.js       # Block endpoint tests
+├── epoch.test.js       # Epoch endpoint tests
+├── rateLimit.test.js   # Rate limiting tests
+└── integration.test.js # End-to-end API tests
 ```
 
 **What's tested:**
@@ -307,22 +315,74 @@ tests/
 - ✅ Security headers (Helmet)
 - ✅ Rate limiting
 - ✅ RPC client methods
-- ✅ Health endpoints
+- ✅ All API endpoints
+- ✅ Cache operations
 - ✅ Error handling
-- ✅ 404 responses
+- ✅ Input validation
 
-**Before deploying:**
-```bash
-# 1. Run tests (uses mocked RPC responses)
-npm test
+### Testing Strategy
 
-# 2. Check coverage (aim for >80%)
-npm run test:coverage
+The API uses a multi-stage testing approach:
 
-# 3. Test with real Idena node (requires your own node)
-# See RPC Node Requirements section
-IDENA_RPC_URL=http://localhost:9009 npm run dev
 ```
+Development:     npm test (mocked RPC)
+                    ↓
+Local testing:   Own node (Docker) + npm run dev
+                    ↓
+Staging:         Private RPC or test node
+                    ↓
+Production:      Own node (recommended)
+```
+
+**Stage 1: Automated Tests (CI/CD)**
+- Tests use mocked RPC responses via Jest
+- No real Idena node required
+- Runs in GitHub Actions on every push
+- Validates all endpoints, error handling, caching logic
+
+```bash
+npm test                  # Run all tests
+npm run test:coverage     # With coverage report
+```
+
+**Stage 2: Local Integration Testing**
+- Run your own Idena node via Docker
+- Test with real blockchain data
+- Verify caching and performance
+
+```bash
+# Terminal 1: Start Idena node
+docker run -d -p 9009:9009 idena/idena-go
+
+# Terminal 2: Start API
+IDENA_RPC_URL=http://localhost:9009 npm run dev
+
+# Terminal 3: Test endpoints
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/epoch/current
+```
+
+**Stage 3: Staging/Production**
+- Deploy to staging environment
+- Test with production-like load
+- Monitor performance and errors
+
+### RPC Options Comparison
+
+| Aspect | Own Node (Option 1) | Private RPC (Option 2) |
+|--------|---------------------|------------------------|
+| **Setup** | `docker run idena/idena-go` | Get API key from provider |
+| **Cost** | VPS (~€5-20/month) + storage | Usually free or paid tier |
+| **Sync time** | Hours to days | Instant |
+| **Reliability** | You control it | Provider-dependent |
+| **Rate limits** | None | Provider-dependent |
+| **Maintenance** | You update/monitor | Provider handles it |
+| **Privacy** | Queries stay local | Provider sees queries |
+
+**Recommendation:**
+- **Development/Testing**: Own node via Docker (full control)
+- **Quick prototyping**: Private RPC if available
+- **Production**: Own node (reliability + no dependencies)
 
 ### Building Docker Image
 
