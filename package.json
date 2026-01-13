@@ -1,6 +1,6 @@
 {
   "name": "idena-lite-api",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0-beta",
   "description": "Community-maintained lightweight Idena API",
   "main": "src/server.js",
   "scripts": {
