@@ -76,7 +76,20 @@ describe('Cache Service', () => {
       const newCache = new Cache();
       expect(newCache.defaultTTL).toBe(600);
       // Reset for other tests
-      process.env.CACHE_TTL = '300';
+      delete process.env.CACHE_TTL;
+    });
+
+    it('should use default TTL of 300 when CACHE_TTL is not set', () => {
+      const originalTTL = process.env.CACHE_TTL;
+      delete process.env.CACHE_TTL;
+
+      const newCache = new Cache();
+      expect(newCache.defaultTTL).toBe(300);
+
+      // Restore original value
+      if (originalTTL !== undefined) {
+        process.env.CACHE_TTL = originalTTL;
+      }
     });
   });
 
