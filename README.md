@@ -95,6 +95,14 @@ GET /api/identity/0x1234.../stake
 GET /api/identities?limit=100&offset=0&states=Human,Verified&minStake=10000
 ```
 
+### Balance Endpoint
+```bash
+# Get balance and stake for an address
+GET /api/balance/0x1234...
+
+# Response: { "address": "0x...", "balance": "1000.5", "stake": "500.25", "unit": "iDNA" }
+```
+
 ### Epoch Endpoints
 ```bash
 # Get current epoch
