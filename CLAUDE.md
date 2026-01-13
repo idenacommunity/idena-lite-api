@@ -61,8 +61,22 @@ src/
     └── health.js       # GET /api/health, /api/ping
 
 tests/
-└── server.test.js      # Jest + supertest API tests
+└── *.test.js           # Jest + supertest API tests
+
+.github/
+├── workflows/ci.yml    # GitHub Actions CI pipeline
+└── dependabot.yml      # Automated dependency updates
 ```
+
+## CI/CD
+
+GitHub Actions runs on every push and pull request to `main`:
+
+- **Lint**: ESLint + Prettier format check
+- **Test**: Runs on Node.js 18, 20, 22 with coverage report on Node 20
+- **Docker**: Builds image and verifies it starts correctly
+
+Dependabot automatically creates PRs for dependency updates weekly.
 
 ## Common Commands
 
