@@ -1,36 +1,61 @@
 const { Cache } = require('../src/cache');
 
 // Mock redis
+const mockOn = jest.fn();
+const mockConnect = jest.fn();
+const mockGet = jest.fn();
+const mockSetEx = jest.fn();
+const mockDel = jest.fn();
+const mockFlushAll = jest.fn();
+const mockQuit = jest.fn();
+
 jest.mock('redis', () => ({
   createClient: jest.fn(() => ({
-    connect: jest.fn().mockResolvedValue(undefined),
-    get: jest.fn(),
-    setEx: jest.fn(),
-    del: jest.fn(),
-    flushAll: jest.fn(),
-    quit: jest.fn(),
-    on: jest.fn(),
+    connect: mockConnect,
+    get: mockGet,
+    setEx: mockSetEx,
+    del: mockDel,
+    flushAll: mockFlushAll,
+    quit: mockQuit,
+    on: mockOn,
   })),
 }));
 
 describe('Cache Service', () => {
   let cache;
   let mockClient;
+  const redis = require('redis');
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockConnect.mockResolvedValue(undefined);
+    mockGet.mockResolvedValue(null);
+    mockSetEx.mockResolvedValue(undefined);
+    mockDel.mockResolvedValue(undefined);
+    mockFlushAll.mockResolvedValue(undefined);
+    mockQuit.mockResolvedValue(undefined);
 
     // Enable cache for testing
     process.env.REDIS_ENABLED = 'true';
 
     cache = new Cache();
-    mockClient = require('redis').createClient();
+    mockClient = redis.createClient();
     cache.client = mockClient;
     cache.enabled = true;
   });
 
   afterEach(() => {
     process.env.REDIS_ENABLED = 'false';
+    // Reset createClient mock to default implementation
+    redis.createClient.mockImplementation(() => ({
+      connect: mockConnect,
+      get: mockGet,
+      setEx: mockSetEx,
+      del: mockDel,
+      flushAll: mockFlushAll,
+      quit: mockQuit,
+      on: mockOn,
+    }));
   });
 
   describe('constructor', () => {
@@ -52,6 +77,178 @@ describe('Cache Service', () => {
       expect(newCache.defaultTTL).toBe(600);
       // Reset for other tests
       process.env.CACHE_TTL = '300';
+    });
+  });
+
+  describe('connect', () => {
+    it('should return early when cache is disabled', async () => {
+      const newCache = new Cache();
+      newCache.enabled = false;
+
+      // Clear mocks from beforeEach
+      redis.createClient.mockClear();
+
+      await newCache.connect();
+
+      expect(redis.createClient).not.toHaveBeenCalled();
+    });
+
+    it('should create Redis client with correct configuration', async () => {
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(redis.createClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: expect.any(String),
+          socket: expect.objectContaining({
+            reconnectStrategy: expect.any(Function),
+          }),
+        })
+      );
+    });
+
+    it('should register error and connect event handlers', async () => {
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(mockOn).toHaveBeenCalledWith('error', expect.any(Function));
+      expect(mockOn).toHaveBeenCalledWith('connect', expect.any(Function));
+    });
+
+    it('should call client.connect()', async () => {
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(mockConnect).toHaveBeenCalled();
+    });
+
+    it('should handle connection failure gracefully', async () => {
+      mockConnect.mockRejectedValue(new Error('Connection refused'));
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(newCache.enabled).toBe(false);
+    });
+
+    it('should use REDIS_URL from environment', async () => {
+      process.env.REDIS_URL = 'redis://custom-host:6380';
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(redis.createClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'redis://custom-host:6380',
+        })
+      );
+      // Reset
+      delete process.env.REDIS_URL;
+    });
+
+    it('should use default REDIS_URL when not set', async () => {
+      delete process.env.REDIS_URL;
+      const newCache = new Cache();
+      newCache.enabled = true;
+
+      await newCache.connect();
+
+      expect(redis.createClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'redis://localhost:6379',
+        })
+      );
+    });
+
+    describe('reconnectStrategy', () => {
+      it('should return delay based on retry count', async () => {
+        let capturedStrategy;
+        redis.createClient.mockImplementation((config) => {
+          capturedStrategy = config.socket.reconnectStrategy;
+          return {
+            connect: mockConnect,
+            on: mockOn,
+          };
+        });
+
+        const newCache = new Cache();
+        newCache.enabled = true;
+        await newCache.connect();
+
+        // Test retry delays
+        expect(capturedStrategy(1)).toBe(100);
+        expect(capturedStrategy(5)).toBe(500);
+        expect(capturedStrategy(10)).toBe(1000);
+      });
+
+      it('should return Error after 10 retries', async () => {
+        let capturedStrategy;
+        redis.createClient.mockImplementation((config) => {
+          capturedStrategy = config.socket.reconnectStrategy;
+          return {
+            connect: mockConnect,
+            on: mockOn,
+          };
+        });
+
+        const newCache = new Cache();
+        newCache.enabled = true;
+        await newCache.connect();
+
+        const result = capturedStrategy(11);
+        expect(result).toBeInstanceOf(Error);
+        expect(result.message).toBe('Redis connection failed');
+      });
+    });
+
+    describe('event handlers', () => {
+      it('should log error on Redis error event', async () => {
+        let errorHandler;
+        mockOn.mockImplementation((event, handler) => {
+          if (event === 'error') {
+            errorHandler = handler;
+          }
+        });
+
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+        const newCache = new Cache();
+        newCache.enabled = true;
+        await newCache.connect();
+
+        // Trigger error handler
+        errorHandler(new Error('Redis connection lost'));
+
+        expect(consoleSpy).toHaveBeenCalledWith('Redis error:', expect.any(Error));
+        consoleSpy.mockRestore();
+      });
+
+      it('should log success on Redis connect event', async () => {
+        let connectHandler;
+        mockOn.mockImplementation((event, handler) => {
+          if (event === 'connect') {
+            connectHandler = handler;
+          }
+        });
+
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+        const newCache = new Cache();
+        newCache.enabled = true;
+        await newCache.connect();
+
+        // Trigger connect handler
+        connectHandler();
+
+        expect(consoleSpy).toHaveBeenCalledWith('✅ Redis connected');
+        consoleSpy.mockRestore();
+      });
     });
   });
 
