@@ -73,6 +73,11 @@ class IdenaRPC {
     return this.call('dna_getBalance', [address]);
   }
 
+  // Transaction method
+  getTransaction(hash) {
+    return this.call('bcn_transaction', [hash]);
+  }
+
   // Health check
   async getNodeHealth() {
     try {

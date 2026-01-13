@@ -37,6 +37,10 @@ const options = {
         description: 'Balance and wallet information',
       },
       {
+        name: 'Transaction',
+        description: 'Transaction information',
+      },
+      {
         name: 'Epoch',
         description: 'Epoch and validation ceremony information',
       },
