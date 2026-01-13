@@ -22,6 +22,19 @@ describe('IdenaRPC Client', () => {
     it('should initialize with custom URL', () => {
       expect(rpc.url).toBe('http://test-node:9009');
     });
+
+    it('should fall back to localhost when IDENA_RPC_URL is not set', () => {
+      const originalUrl = process.env.IDENA_RPC_URL;
+      delete process.env.IDENA_RPC_URL;
+
+      const fallbackRpc = new IdenaRPC();
+      expect(fallbackRpc.url).toBe('http://localhost:9009');
+
+      // Restore original value
+      if (originalUrl !== undefined) {
+        process.env.IDENA_RPC_URL = originalUrl;
+      }
+    });
   });
 
   describe('call method', () => {
@@ -392,6 +405,30 @@ describe('IdenaRPC Client', () => {
 
       expect(result.total).toBe(2);
       expect(result.data.every((i) => parseFloat(i.stake) >= 1000)).toBe(true);
+    });
+
+    it('should handle identities with null or undefined stake in minStake filter', async () => {
+      const identitiesWithNullStake = [
+        { address: '0x1', state: 'Human', stake: '1000' },
+        { address: '0x2', state: 'Verified', stake: null },
+        { address: '0x3', state: 'Human' }, // stake is undefined
+        { address: '0x4', state: 'Newbie', stake: '500' },
+      ];
+      axios.post.mockResolvedValue({
+        data: { result: identitiesWithNullStake },
+      });
+
+      const result = await rpc.getFilteredIdentities({
+        minStake: 100,
+      });
+
+      // Only identities with stake >= 100 should be included
+      // Null/undefined stake defaults to 0, which is < 100
+      expect(result.total).toBe(2);
+      expect(result.data).toEqual([
+        { address: '0x1', state: 'Human', stake: '1000' },
+        { address: '0x4', state: 'Newbie', stake: '500' },
+      ]);
     });
 
     it('should paginate results', async () => {
