@@ -17,8 +17,7 @@ describe('Transaction Routes', () => {
   });
 
   describe('GET /api/transaction/:hash', () => {
-    const validHash =
-      '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    const validHash = '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
 
     it('should return transaction for valid hash', async () => {
       const mockTxData = {
@@ -31,8 +30,7 @@ describe('Transaction Routes', () => {
         maxFee: '0.1',
         nonce: 42,
         epoch: 150,
-        blockHash:
-          '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+        blockHash: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         timestamp: 1704067200,
       };
       mockGetTransaction.mockResolvedValueOnce(mockTxData);
@@ -49,37 +47,27 @@ describe('Transaction Routes', () => {
     });
 
     it('should reject invalid hash format - too short', async () => {
-      const response = await request(app)
-        .get('/api/transaction/0x1234')
-        .expect(400);
+      const response = await request(app).get('/api/transaction/0x1234').expect(400);
 
-      expect(response.body.error.message).toContain(
-        'Invalid transaction hash format'
-      );
+      expect(response.body.error.message).toContain('Invalid transaction hash format');
     });
 
     it('should reject invalid hash format - missing 0x prefix', async () => {
-      const hashWithoutPrefix =
-        '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+      const hashWithoutPrefix = '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
       const response = await request(app)
         .get('/api/transaction/' + hashWithoutPrefix)
         .expect(400);
 
-      expect(response.body.error.message).toContain(
-        'Invalid transaction hash format'
-      );
+      expect(response.body.error.message).toContain('Invalid transaction hash format');
     });
 
     it('should reject invalid hash format - invalid characters', async () => {
-      const invalidHash =
-        '0xZZZZ567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+      const invalidHash = '0xZZZZ567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
       const response = await request(app)
         .get('/api/transaction/' + invalidHash)
         .expect(400);
 
-      expect(response.body.error.message).toContain(
-        'Invalid transaction hash format'
-      );
+      expect(response.body.error.message).toContain('Invalid transaction hash format');
     });
 
     it('should return 404 when transaction not found', async () => {
@@ -93,9 +81,7 @@ describe('Transaction Routes', () => {
     });
 
     it('should handle RPC errors gracefully', async () => {
-      mockGetTransaction.mockRejectedValueOnce(
-        new Error('RPC connection failed')
-      );
+      mockGetTransaction.mockRejectedValueOnce(new Error('RPC connection failed'));
 
       const response = await request(app)
         .get('/api/transaction/' + validHash)
