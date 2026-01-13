@@ -55,8 +55,9 @@ src/
 ├── server.js           # Express server entry point, middleware setup, route registration
 ├── rpc.js              # Idena RPC client (axios-based JSON-RPC calls)
 ├── cache.js            # Redis caching singleton with TTL support
+├── swagger.js          # OpenAPI 3.0 specification for Swagger UI
 └── routes/
-    ├── identity.js     # GET /api/identity/:address, /api/identity/:address/stake, /api/identities
+    ├── identity.js     # GET /api/identity/:address, /api/identity/:address/stake, /api/identity
     ├── epoch.js        # GET /api/epoch/current, /api/epoch/intervals
     └── health.js       # GET /api/health, /api/ping
 
@@ -241,6 +242,15 @@ JSON Response
 
 ## API Endpoints
 
+### API Documentation (Swagger)
+```bash
+# Interactive Swagger UI
+GET /api/docs
+
+# OpenAPI 3.0 JSON specification
+GET /api/docs.json
+```
+
 ### Health & Status
 ```bash
 GET /api/health
@@ -302,6 +312,10 @@ GET /api/epoch/intervals
 - `express-rate-limit` ^8.2.1: Rate limiting
 - `dotenv` ^17.2.3: Environment variable management
 
+**Documentation:**
+- `swagger-jsdoc` ^6.2.8: Generate OpenAPI spec from JSDoc comments
+- `swagger-ui-express` ^5.0.1: Serve interactive Swagger UI
+
 **Dev Dependencies:**
 - `@eslint/js` ^9.39.2: ESLint recommended rules
 - `eslint` ^9.39.2: JavaScript linter (flat config format)
@@ -334,8 +348,41 @@ GET /api/epoch/intervals
 3. Define Express router with async handlers
 4. Add address validation (regex: `/^0x[a-fA-F0-9]{40}$/`)
 5. Implement cache-first pattern: check cache → RPC call → store in cache
-6. Register routes in `src/server.js`: `app.use('/api/blocks', blocksRoutes)`
-7. Write tests in `tests/`
+6. **Add Swagger JSDoc annotations** for API documentation (see existing routes for examples)
+7. Register routes in `src/server.js`: `app.use('/api/blocks', blocksRoutes)`
+8. Write tests in `tests/`
+
+### Adding Swagger Documentation
+
+Add JSDoc comments above route handlers:
+
+```javascript
+/**
+ * @swagger
+ * /api/blocks/{height}:
+ *   get:
+ *     summary: Get block by height
+ *     description: Retrieves block information for a specific height
+ *     tags: [Blocks]
+ *     parameters:
+ *       - in: path
+ *         name: height
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Block height
+ *     responses:
+ *       200:
+ *         description: Block found
+ *       404:
+ *         description: Block not found
+ */
+router.get('/:height', async (req, res, next) => {
+  // handler code
+});
+```
+
+Add new schemas to `src/swagger.js` in the `components.schemas` section if needed.
 
 ### Modifying RPC Calls
 
