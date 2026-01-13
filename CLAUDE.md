@@ -59,6 +59,7 @@ src/
 └── routes/
     ├── identity.js     # GET /api/identity/:address, /api/identity/:address/stake, /api/identity
     ├── balance.js      # GET /api/balance/:address
+    ├── transaction.js  # GET /api/transaction/:hash
     ├── epoch.js        # GET /api/epoch/current, /api/epoch/intervals
     └── health.js       # GET /api/health, /api/ping
 
@@ -238,6 +239,7 @@ JSON Response
 - Identity: 300s (5 minutes)
 - Stake: 300s (5 minutes)
 - Balance: 300s (5 minutes)
+- Transaction: 600s (10 minutes - transactions are immutable)
 - Identities list: 120s (2 minutes - more volatile)
 - Epoch current: 60s (1 minute)
 - Epoch intervals: 600s (10 minutes - rarely changes)
@@ -276,6 +278,13 @@ GET /api/identities?limit=100&offset=0&states=Human,Verified&minStake=10000
 # Get balance and stake for an address
 GET /api/balance/{address}
 # Response: { "address": "0x...", "balance": "1000.5", "stake": "500.25", "unit": "iDNA" }
+```
+
+### Transaction Endpoint
+```bash
+# Get transaction by hash
+GET /api/transaction/{hash}
+# Response: { "result": { "hash": "0x...", "type": "send", "from": "0x...", "to": "0x...", "amount": "100.5", ... } }
 ```
 
 ### Epoch Endpoints

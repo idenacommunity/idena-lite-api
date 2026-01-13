@@ -103,6 +103,14 @@ GET /api/balance/0x1234...
 # Response: { "address": "0x...", "balance": "1000.5", "stake": "500.25", "unit": "iDNA" }
 ```
 
+### Transaction Endpoint
+```bash
+# Get transaction by hash
+GET /api/transaction/0x1234567890abcdef...
+
+# Response: { "result": { "hash": "0x...", "type": "send", "from": "0x...", "to": "0x...", "amount": "100.5", ... } }
+```
+
 ### Epoch Endpoints
 ```bash
 # Get current epoch
