@@ -9,8 +9,8 @@ jest.mock('redis', () => ({
     del: jest.fn(),
     flushAll: jest.fn(),
     quit: jest.fn(),
-    on: jest.fn()
-  }))
+    on: jest.fn(),
+  })),
 }));
 
 describe('Cache Service', () => {
@@ -19,17 +19,17 @@ describe('Cache Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Enable cache for testing
     process.env.REDIS_ENABLED = 'true';
-    
+
     cache = new Cache();
     mockClient = require('redis').createClient();
     cache.client = mockClient;
     cache.enabled = true;
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     process.env.REDIS_ENABLED = 'false';
   });
 
@@ -112,22 +112,14 @@ describe('Cache Service', () => {
       const data = { test: 'data' };
       await cache.set('test-key', data);
 
-      expect(mockClient.setEx).toHaveBeenCalledWith(
-        'test-key',
-        300,
-        JSON.stringify(data)
-      );
+      expect(mockClient.setEx).toHaveBeenCalledWith('test-key', 300, JSON.stringify(data));
     });
 
     it('should store value with custom TTL', async () => {
       const data = { test: 'data' };
       await cache.set('test-key', data, 600);
 
-      expect(mockClient.setEx).toHaveBeenCalledWith(
-        'test-key',
-        600,
-        JSON.stringify(data)
-      );
+      expect(mockClient.setEx).toHaveBeenCalledWith('test-key', 600, JSON.stringify(data));
     });
 
     it('should handle errors gracefully', async () => {

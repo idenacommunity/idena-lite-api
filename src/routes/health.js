@@ -16,13 +16,13 @@ router.get('/health', async (req, res) => {
         status: 'operational',
         version: '1.0.0',
         uptime: process.uptime(),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
       idenaNode: nodeHealth,
       cache: {
         status: cacheHealth,
-        enabled: cache.enabled
-      }
+        enabled: cache.enabled,
+      },
     };
 
     const statusCode = nodeHealth.healthy ? 200 : 503;
@@ -32,18 +32,18 @@ router.get('/health', async (req, res) => {
       api: {
         status: 'error',
         version: '1.0.0',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
-      error: error.message
+      error: error.message,
     });
   }
 });
 
 // GET /api/ping
 router.get('/ping', (req, res) => {
-  res.json({ 
+  res.json({
     pong: true,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 

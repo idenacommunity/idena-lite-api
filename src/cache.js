@@ -15,7 +15,7 @@ class Cache {
 
     try {
       const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-      
+
       this.client = redis.createClient({
         url: redisUrl,
         socket: {
@@ -25,8 +25,8 @@ class Cache {
               return new Error('Redis connection failed');
             }
             return retries * 100;
-          }
-        }
+          },
+        },
       });
 
       this.client.on('error', (err) => {
@@ -46,7 +46,9 @@ class Cache {
   }
 
   async get(key) {
-    if (!this.enabled || !this.client) return null;
+    if (!this.enabled || !this.client) {
+      return null;
+    }
 
     try {
       const value = await this.client.get(key);
@@ -61,21 +63,21 @@ class Cache {
   }
 
   async set(key, value, ttl = this.defaultTTL) {
-    if (!this.enabled || !this.client) return;
+    if (!this.enabled || !this.client) {
+      return;
+    }
 
     try {
-      await this.client.setEx(
-        key,
-        ttl,
-        JSON.stringify(value)
-      );
+      await this.client.setEx(key, ttl, JSON.stringify(value));
     } catch (error) {
       console.error('Cache set error:', error.message);
     }
   }
 
   async delete(key) {
-    if (!this.enabled || !this.client) return;
+    if (!this.enabled || !this.client) {
+      return;
+    }
 
     try {
       await this.client.del(key);
@@ -85,7 +87,9 @@ class Cache {
   }
 
   async flush() {
-    if (!this.enabled || !this.client) return;
+    if (!this.enabled || !this.client) {
+      return;
+    }
 
     try {
       await this.client.flushAll();

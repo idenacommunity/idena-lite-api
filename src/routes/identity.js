@@ -9,32 +9,32 @@ const rpc = new IdenaRPC();
 router.get('/:address', async (req, res, next) => {
   try {
     const { address } = req.params;
-    
+
     // Validate address format
     if (!address || !address.match(/^0x[a-fA-F0-9]{40}$/)) {
       return res.status(400).json({
         error: {
           message: 'Invalid Idena address format',
-          status: 400
-        }
+          status: 400,
+        },
       });
     }
 
     const cacheKey = cache.generateKey('identity', address.toLowerCase());
-    
+
     // Check cache
     let identity = await cache.get(cacheKey);
-    
+
     if (!identity) {
       // Fetch from RPC
       identity = await rpc.getIdentity(address);
-      
+
       if (!identity) {
         return res.status(404).json({
           error: {
             message: 'Identity not found',
-            status: 404
-          }
+            status: 404,
+          },
         });
       }
 
@@ -44,7 +44,7 @@ router.get('/:address', async (req, res, next) => {
 
     res.json({
       result: identity,
-      cached: !!identity.cached
+      cached: !!identity.cached,
     });
   } catch (error) {
     next(error);
@@ -55,29 +55,29 @@ router.get('/:address', async (req, res, next) => {
 router.get('/:address/stake', async (req, res, next) => {
   try {
     const { address } = req.params;
-    
+
     if (!address || !address.match(/^0x[a-fA-F0-9]{40}$/)) {
       return res.status(400).json({
         error: {
           message: 'Invalid Idena address format',
-          status: 400
-        }
+          status: 400,
+        },
       });
     }
 
     const cacheKey = cache.generateKey('stake', address.toLowerCase());
-    
+
     let stake = await cache.get(cacheKey);
-    
+
     if (stake === null) {
       const identity = await rpc.getIdentity(address);
-      
+
       if (!identity) {
         return res.status(404).json({
           error: {
             message: 'Identity not found',
-            status: 404
-          }
+            status: 404,
+          },
         });
       }
 
@@ -88,7 +88,7 @@ router.get('/:address/stake', async (req, res, next) => {
     res.json({
       address,
       stake,
-      unit: 'iDNA'
+      unit: 'iDNA',
     });
   } catch (error) {
     next(error);
@@ -118,7 +118,7 @@ router.get('/', async (req, res, next) => {
         limit,
         offset,
         states,
-        minStake
+        minStake,
       });
 
       // Cache for 2 minutes (more volatile data)

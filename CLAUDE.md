@@ -96,6 +96,21 @@ npm run test:watch
 npm run test:coverage
 ```
 
+### Linting & Formatting
+```bash
+# Run ESLint
+npm run lint
+
+# Run ESLint with auto-fix
+npm run lint:fix
+
+# Format code with Prettier
+npm run format
+
+# Check formatting without writing
+npm run format:check
+```
+
 ### Docker
 ```bash
 # Build Docker image
@@ -272,8 +287,11 @@ GET /api/epoch/intervals
 - `dotenv` ^16.3.1: Environment variable management
 
 **Dev Dependencies:**
-- `nodemon` ^3.0.2: Hot reload for development
+- `eslint` ^8.57.0: JavaScript linter
+- `eslint-config-prettier` ^9.1.0: Disables ESLint rules that conflict with Prettier
 - `jest` ^29.7.0: Testing framework
+- `nodemon` ^3.0.2: Hot reload for development
+- `prettier` ^3.2.5: Code formatter
 - `supertest` ^6.3.3: HTTP assertion library
 
 **Node Version:** >=18.0.0

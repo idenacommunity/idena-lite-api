@@ -8,18 +8,22 @@ class IdenaRPC {
 
   async call(method, params = []) {
     try {
-      const response = await axios.post(this.url, {
-        jsonrpc: '2.0',
-        method: method,
-        params: params,
-        id: Date.now(),
-        key: this.apiKey
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
+      const response = await axios.post(
+        this.url,
+        {
+          jsonrpc: '2.0',
+          method: method,
+          params: params,
+          id: Date.now(),
+          key: this.apiKey,
         },
-        timeout: 30000 // 30 second timeout
-      });
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000, // 30 second timeout
+        }
+      );
 
       if (response.data.error) {
         throw new Error(response.data.error.message || 'RPC error');
@@ -35,21 +39,21 @@ class IdenaRPC {
   }
 
   // Identity methods
-  async getIdentity(address) {
-    return await this.call('dna_identity', [address]);
+  getIdentity(address) {
+    return this.call('dna_identity', [address]);
   }
 
-  async getIdentities() {
-    return await this.call('dna_identities');
+  getIdentities() {
+    return this.call('dna_identities');
   }
 
   // Epoch methods
-  async getEpoch() {
-    return await this.call('dna_epoch');
+  getEpoch() {
+    return this.call('dna_epoch');
   }
 
-  async getCeremonyIntervals() {
-    return await this.call('dna_ceremonyIntervals');
+  getCeremonyIntervals() {
+    return this.call('dna_ceremonyIntervals');
   }
 
   // Network methods
@@ -71,13 +75,13 @@ class IdenaRPC {
       return {
         healthy: true,
         currentEpoch: epoch.epoch,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
       return {
         healthy: false,
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -85,32 +89,32 @@ class IdenaRPC {
   // Batch identity fetch with filtering
   async getFilteredIdentities(filter = {}) {
     const identities = await this.getIdentities();
-    
-    if (!identities) return [];
+
+    if (!identities) {
+      return [];
+    }
 
     let filtered = identities;
 
     // Filter by state (e.g., 'Human', 'Verified', 'Newbie')
     if (filter.states && Array.isArray(filter.states)) {
-      filtered = filtered.filter(i => filter.states.includes(i.state));
+      filtered = filtered.filter((i) => filter.states.includes(i.state));
     }
 
     // Filter by minimum stake
     if (filter.minStake) {
-      filtered = filtered.filter(i => 
-        parseFloat(i.stake || 0) >= parseFloat(filter.minStake)
-      );
+      filtered = filtered.filter((i) => parseFloat(i.stake || 0) >= parseFloat(filter.minStake));
     }
 
     // Pagination
     const limit = filter.limit || 100;
     const offset = filter.offset || 0;
-    
+
     return {
       total: filtered.length,
       limit,
       offset,
-      data: filtered.slice(offset, offset + limit)
+      data: filtered.slice(offset, offset + limit),
     };
   }
 }

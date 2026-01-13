@@ -7,14 +7,14 @@ describe('Rate Limiting', () => {
 
   it('should allow requests under rate limit', async () => {
     // Make 10 requests quickly
-    const requests = Array(10).fill().map(() =>
-      request(app).get('/api/ping')
-    );
+    const requests = Array(10)
+      .fill()
+      .map(() => request(app).get('/api/ping'));
 
     const responses = await Promise.all(requests);
 
     // All should succeed
-    responses.forEach(response => {
+    responses.forEach((response) => {
       expect(response.status).toBe(200);
     });
   });

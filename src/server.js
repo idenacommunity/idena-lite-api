@@ -20,7 +20,7 @@ app.use(express.json());
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
-  message: 'Too many requests from this IP, please try again later.'
+  message: 'Too many requests from this IP, please try again later.',
 });
 app.use(limiter);
 
@@ -40,10 +40,10 @@ app.get('/', (req, res) => {
       identity: '/api/identity/:address',
       identities: '/api/identities?limit=100&offset=0',
       epoch: '/api/epoch/current',
-      stake: '/api/identity/:address/stake'
+      stake: '/api/identity/:address/stake',
     },
     documentation: 'https://github.com/idena-community/idena-lite-api',
-    rpcNode: process.env.IDENA_RPC_URL || 'Not configured'
+    rpcNode: process.env.IDENA_RPC_URL || 'Not configured',
   });
 });
 
@@ -53,8 +53,8 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     error: {
       message: err.message || 'Internal server error',
-      status: err.status || 500
-    }
+      status: err.status || 500,
+    },
   });
 });
 
@@ -63,8 +63,8 @@ app.use((req, res) => {
   res.status(404).json({
     error: {
       message: 'Endpoint not found',
-      status: 404
-    }
+      status: 404,
+    },
   });
 });
 

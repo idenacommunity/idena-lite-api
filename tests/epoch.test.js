@@ -6,7 +6,7 @@ const mockGetCeremonyIntervals = jest.fn();
 jest.mock('../src/rpc', () => {
   return jest.fn().mockImplementation(() => ({
     getEpoch: mockGetEpoch,
-    getCeremonyIntervals: mockGetCeremonyIntervals
+    getCeremonyIntervals: mockGetCeremonyIntervals,
   }));
 });
 
@@ -23,13 +23,11 @@ describe('Epoch Routes', () => {
       const mockEpochData = {
         epoch: 100,
         nextValidation: '2026-02-15T12:00:00Z',
-        currentPeriod: 'None'
+        currentPeriod: 'None',
       };
       mockGetEpoch.mockResolvedValueOnce(mockEpochData);
 
-      const response = await request(app)
-        .get('/api/epoch/current')
-        .expect(200);
+      const response = await request(app).get('/api/epoch/current').expect(200);
 
       expect(response.body).toHaveProperty('result');
       expect(response.body.result.epoch).toBe(100);
@@ -39,9 +37,7 @@ describe('Epoch Routes', () => {
     it('should return 500 when epoch data is null', async () => {
       mockGetEpoch.mockResolvedValueOnce(null);
 
-      const response = await request(app)
-        .get('/api/epoch/current')
-        .expect(500);
+      const response = await request(app).get('/api/epoch/current').expect(500);
 
       expect(response.body.error.message).toBe('Failed to fetch epoch data');
     });
@@ -49,9 +45,7 @@ describe('Epoch Routes', () => {
     it('should handle RPC errors', async () => {
       mockGetEpoch.mockRejectedValueOnce(new Error('RPC failed'));
 
-      await request(app)
-        .get('/api/epoch/current')
-        .expect(500);
+      await request(app).get('/api/epoch/current').expect(500);
     });
   });
 
@@ -60,13 +54,11 @@ describe('Epoch Routes', () => {
       const mockIntervals = {
         FlipLotteryDuration: 7200,
         ShortSessionDuration: 900,
-        LongSessionDuration: 1800
+        LongSessionDuration: 1800,
       };
       mockGetCeremonyIntervals.mockResolvedValueOnce(mockIntervals);
 
-      const response = await request(app)
-        .get('/api/epoch/intervals')
-        .expect(200);
+      const response = await request(app).get('/api/epoch/intervals').expect(200);
 
       expect(response.body).toHaveProperty('result');
       expect(response.body.result).toMatchObject(mockIntervals);
@@ -76,9 +68,7 @@ describe('Epoch Routes', () => {
     it('should return 500 when intervals are null', async () => {
       mockGetCeremonyIntervals.mockResolvedValueOnce(null);
 
-      const response = await request(app)
-        .get('/api/epoch/intervals')
-        .expect(500);
+      const response = await request(app).get('/api/epoch/intervals').expect(500);
 
       expect(response.body.error.message).toBe('Failed to fetch ceremony intervals');
     });
@@ -86,9 +76,7 @@ describe('Epoch Routes', () => {
     it('should handle RPC errors', async () => {
       mockGetCeremonyIntervals.mockRejectedValueOnce(new Error('RPC failed'));
 
-      await request(app)
-        .get('/api/epoch/intervals')
-        .expect(500);
+      await request(app).get('/api/epoch/intervals').expect(500);
     });
   });
 });

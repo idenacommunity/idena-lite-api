@@ -6,7 +6,7 @@ const mockGetFilteredIdentities = jest.fn();
 jest.mock('../src/rpc', () => {
   return jest.fn().mockImplementation(() => ({
     getIdentity: mockGetIdentity,
-    getFilteredIdentities: mockGetFilteredIdentities
+    getFilteredIdentities: mockGetFilteredIdentities,
   }));
 });
 
@@ -26,7 +26,7 @@ describe('Identity Routes', () => {
         address: validAddress,
         state: 'Human',
         stake: '1000',
-        age: 10
+        age: 10,
       };
       mockGetIdentity.mockResolvedValueOnce(mockIdentity);
 
@@ -39,9 +39,7 @@ describe('Identity Routes', () => {
     });
 
     it('should reject invalid address format - too short', async () => {
-      const response = await request(app)
-        .get('/api/identity/0x123')
-        .expect(400);
+      const response = await request(app).get('/api/identity/0x123').expect(400);
 
       expect(response.body.error.message).toContain('Invalid Idena address');
     });
@@ -64,7 +62,7 @@ describe('Identity Routes', () => {
       mockGetIdentity.mockResolvedValueOnce({
         address: validAddress,
         state: 'Human',
-        stake: '1500.5'
+        stake: '1500.5',
       });
 
       const response = await request(app)
@@ -79,7 +77,7 @@ describe('Identity Routes', () => {
       mockGetIdentity.mockResolvedValueOnce({
         address: validAddress,
         state: 'Newbie',
-        stake: null
+        stake: null,
       });
 
       const response = await request(app)
@@ -98,13 +96,11 @@ describe('Identity Routes', () => {
         offset: 0,
         data: [
           { address: '0x111', state: 'Human' },
-          { address: '0x222', state: 'Verified' }
-        ]
+          { address: '0x222', state: 'Verified' },
+        ],
       });
 
-      const response = await request(app)
-        .get('/api/identity?limit=100&offset=0')
-        .expect(200);
+      const response = await request(app).get('/api/identity?limit=100&offset=0').expect(200);
 
       expect(response.body).toHaveProperty('total', 3);
       expect(response.body.data).toHaveLength(2);
@@ -115,16 +111,12 @@ describe('Identity Routes', () => {
         total: 10,
         limit: 5,
         offset: 0,
-        data: []
+        data: [],
       });
 
-      await request(app)
-        .get('/api/identity?limit=5')
-        .expect(200);
+      await request(app).get('/api/identity?limit=5').expect(200);
 
-      expect(mockGetFilteredIdentities).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 5 })
-      );
+      expect(mockGetFilteredIdentities).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
     });
 
     it('should enforce maximum limit of 1000', async () => {
@@ -132,12 +124,10 @@ describe('Identity Routes', () => {
         total: 0,
         limit: 1000,
         offset: 0,
-        data: []
+        data: [],
       });
 
-      await request(app)
-        .get('/api/identity?limit=5000')
-        .expect(200);
+      await request(app).get('/api/identity?limit=5000').expect(200);
 
       expect(mockGetFilteredIdentities).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 1000 })
@@ -149,12 +139,10 @@ describe('Identity Routes', () => {
         total: 1,
         limit: 100,
         offset: 0,
-        data: []
+        data: [],
       });
 
-      await request(app)
-        .get('/api/identity?states=Human,Verified')
-        .expect(200);
+      await request(app).get('/api/identity?states=Human,Verified').expect(200);
 
       expect(mockGetFilteredIdentities).toHaveBeenCalledWith(
         expect.objectContaining({ states: ['Human', 'Verified'] })

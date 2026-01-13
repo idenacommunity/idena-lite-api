@@ -4,8 +4,8 @@ jest.mock('../src/rpc', () => {
     getNodeHealth: jest.fn().mockResolvedValue({
       healthy: true,
       currentEpoch: 100,
-      timestamp: new Date().toISOString()
-    })
+      timestamp: new Date().toISOString(),
+    }),
   }));
 });
 
@@ -15,9 +15,7 @@ const app = require('../src/server');
 describe('Health Endpoint', () => {
   describe('GET /api/health', () => {
     it('should return health status', async () => {
-      const response = await request(app)
-        .get('/api/health')
-        .expect('Content-Type', /json/);
+      const response = await request(app).get('/api/health').expect('Content-Type', /json/);
 
       expect(response.body).toHaveProperty('api');
       expect(response.body.api).toHaveProperty('status');

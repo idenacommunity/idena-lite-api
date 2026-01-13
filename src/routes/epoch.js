@@ -9,18 +9,18 @@ const rpc = new IdenaRPC();
 router.get('/current', async (req, res, next) => {
   try {
     const cacheKey = cache.generateKey('epoch', 'current');
-    
+
     let epochData = await cache.get(cacheKey);
-    
+
     if (!epochData) {
       epochData = await rpc.getEpoch();
-      
+
       if (!epochData) {
         return res.status(500).json({
           error: {
             message: 'Failed to fetch epoch data',
-            status: 500
-          }
+            status: 500,
+          },
         });
       }
 
@@ -29,7 +29,7 @@ router.get('/current', async (req, res, next) => {
     }
 
     res.json({
-      result: epochData
+      result: epochData,
     });
   } catch (error) {
     next(error);
@@ -40,18 +40,18 @@ router.get('/current', async (req, res, next) => {
 router.get('/intervals', async (req, res, next) => {
   try {
     const cacheKey = cache.generateKey('epoch', 'intervals');
-    
+
     let intervals = await cache.get(cacheKey);
-    
+
     if (!intervals) {
       intervals = await rpc.getCeremonyIntervals();
-      
+
       if (!intervals) {
         return res.status(500).json({
           error: {
             message: 'Failed to fetch ceremony intervals',
-            status: 500
-          }
+            status: 500,
+          },
         });
       }
 
@@ -60,7 +60,7 @@ router.get('/intervals', async (req, res, next) => {
     }
 
     res.json({
-      result: intervals
+      result: intervals,
     });
   } catch (error) {
     next(error);
