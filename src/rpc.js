@@ -68,6 +68,11 @@ class IdenaRPC {
     return identity ? identity.stake : null;
   }
 
+  // Balance method
+  getBalance(address) {
+    return this.call('dna_getBalance', [address]);
+  }
+
   // Health check
   async getNodeHealth() {
     try {

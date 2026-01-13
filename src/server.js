@@ -9,6 +9,7 @@ require('dotenv').config({ quiet: true });
 const identityRoutes = require('./routes/identity');
 const epochRoutes = require('./routes/epoch');
 const healthRoutes = require('./routes/health');
+const balanceRoutes = require('./routes/balance');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.get('/api/docs.json', (req, res) => {
 app.use('/api', healthRoutes);
 app.use('/api/identity', identityRoutes);
 app.use('/api/epoch', epochRoutes);
+app.use('/api/balance', balanceRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -48,6 +50,7 @@ app.get('/', (req, res) => {
       health: '/api/health',
       identity: '/api/identity/:address',
       identities: '/api/identity?limit=100&offset=0',
+      balance: '/api/balance/:address',
       epoch: '/api/epoch/current',
       stake: '/api/identity/:address/stake',
       docs: '/api/docs',
