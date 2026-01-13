@@ -32,6 +32,35 @@ describe('Health Endpoint', () => {
       expect(response.body.cache).toHaveProperty('enabled');
     });
 
+    it('should return cache status as connected when cache is enabled', async () => {
+      jest.resetModules();
+
+      // Mock cache with enabled = true
+      jest.mock('../src/cache', () => ({
+        enabled: true,
+        get: jest.fn(),
+        set: jest.fn(),
+        generateKey: jest.fn(),
+      }));
+
+      // Mock RPC
+      jest.mock('../src/rpc', () => {
+        return jest.fn().mockImplementation(() => ({
+          getNodeHealth: jest.fn().mockResolvedValue({
+            healthy: true,
+            currentEpoch: 100,
+            timestamp: new Date().toISOString(),
+          }),
+        }));
+      });
+
+      const appWithCache = require('../src/server');
+      const response = await request(appWithCache).get('/api/health');
+
+      expect(response.body.cache.status).toBe('connected');
+      expect(response.body.cache.enabled).toBe(true);
+    });
+
     it('should include node health', async () => {
       const response = await request(app).get('/api/health');
 
