@@ -10,6 +10,7 @@ jest.mock('../src/rpc', () => {
 
 const request = require('supertest');
 const app = require('../src/server');
+const cache = require('../src/cache');
 
 describe('Transaction Routes', () => {
   beforeEach(() => {
@@ -88,6 +89,27 @@ describe('Transaction Routes', () => {
         .expect(500);
 
       expect(response.body.error.message).toContain('RPC connection failed');
+    });
+
+    it('should return cached transaction when available', async () => {
+      const cachedTx = {
+        hash: validHash,
+        type: 'send',
+        from: '0x1234567890123456789012345678901234567890',
+        to: '0x0987654321098765432109876543210987654321',
+        amount: '500.0',
+      };
+
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(cachedTx);
+
+      const response = await request(app)
+        .get('/api/transaction/' + validHash)
+        .expect(200);
+
+      expect(response.body.result).toEqual(cachedTx);
+      expect(mockGetTransaction).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
     });
   });
 });

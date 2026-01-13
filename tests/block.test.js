@@ -12,6 +12,7 @@ jest.mock('../src/rpc', () => {
 
 const request = require('supertest');
 const app = require('../src/server');
+const cache = require('../src/cache');
 
 describe('Block Routes', () => {
   beforeEach(() => {
@@ -115,6 +116,42 @@ describe('Block Routes', () => {
         .expect(500);
 
       expect(response.body.error.message).toContain('RPC connection failed');
+    });
+
+    it('should return cached block when available (by height)', async () => {
+      const cachedBlock = {
+        height: 99999,
+        hash: '0xcachedblock',
+        timestamp: 1704067200,
+      };
+
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(cachedBlock);
+
+      const response = await request(app).get('/api/block/99999').expect(200);
+
+      expect(response.body.result).toEqual(cachedBlock);
+      expect(mockGetBlockByHeight).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
+    });
+
+    it('should return cached block when available (by hash)', async () => {
+      const cachedBlock = {
+        height: 88888,
+        hash: validHash,
+        timestamp: 1704067200,
+      };
+
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(cachedBlock);
+
+      const response = await request(app)
+        .get('/api/block/' + validHash)
+        .expect(200);
+
+      expect(response.body.result).toEqual(cachedBlock);
+      expect(mockGetBlockByHash).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
     });
   });
 });

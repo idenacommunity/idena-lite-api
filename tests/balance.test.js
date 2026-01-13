@@ -10,6 +10,7 @@ jest.mock('../src/rpc', () => {
 
 const request = require('supertest');
 const app = require('../src/server');
+const cache = require('../src/cache');
 
 describe('Balance Routes', () => {
   beforeEach(() => {
@@ -83,6 +84,25 @@ describe('Balance Routes', () => {
         .expect(500);
 
       expect(response.body.error.message).toContain('RPC connection failed');
+    });
+
+    it('should return cached balance when available', async () => {
+      const cachedBalance = {
+        balance: '2500.75',
+        stake: '1000.25',
+      };
+
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(cachedBalance);
+
+      const response = await request(app)
+        .get('/api/balance/' + validAddress)
+        .expect(200);
+
+      expect(response.body.balance).toBe('2500.75');
+      expect(response.body.stake).toBe('1000.25');
+      expect(mockGetBalance).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
     });
   });
 });

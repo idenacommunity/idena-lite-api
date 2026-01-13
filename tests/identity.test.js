@@ -12,6 +12,7 @@ jest.mock('../src/rpc', () => {
 
 const request = require('supertest');
 const app = require('../src/server');
+const cache = require('../src/cache');
 
 describe('Identity Routes', () => {
   beforeEach(() => {
@@ -53,6 +54,38 @@ describe('Identity Routes', () => {
 
       expect(response.body.error.message).toBe('Identity not found');
     });
+
+    it('should handle RPC errors gracefully', async () => {
+      mockGetIdentity.mockRejectedValueOnce(new Error('RPC connection failed'));
+
+      const response = await request(app)
+        .get('/api/identity/' + validAddress)
+        .expect(500);
+
+      expect(response.body.error).toHaveProperty('message');
+    });
+
+    it('should return cached identity when available', async () => {
+      const mockIdentity = {
+        address: validAddress,
+        state: 'Human',
+        stake: '1000',
+        cached: true,
+      };
+
+      // Mock cache to return data
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(mockIdentity);
+
+      const response = await request(app)
+        .get('/api/identity/' + validAddress)
+        .expect(200);
+
+      expect(response.body.result).toEqual(mockIdentity);
+      // RPC should not be called when cache hits
+      expect(mockGetIdentity).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
+    });
   });
 
   describe('GET /api/identity/:address/stake', () => {
@@ -85,6 +118,46 @@ describe('Identity Routes', () => {
         .expect(200);
 
       expect(response.body.stake).toBe('0');
+    });
+
+    it('should reject invalid address format', async () => {
+      const response = await request(app).get('/api/identity/invalid/stake').expect(400);
+
+      expect(response.body.error.message).toContain('Invalid Idena address');
+    });
+
+    it('should return 404 when identity not found for stake', async () => {
+      mockGetIdentity.mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .get('/api/identity/' + validAddress + '/stake')
+        .expect(404);
+
+      expect(response.body.error.message).toBe('Identity not found');
+    });
+
+    it('should handle RPC errors gracefully', async () => {
+      mockGetIdentity.mockRejectedValueOnce(new Error('RPC connection failed'));
+
+      const response = await request(app)
+        .get('/api/identity/' + validAddress + '/stake')
+        .expect(500);
+
+      expect(response.body.error).toHaveProperty('message');
+    });
+
+    it('should return cached stake when available', async () => {
+      // Mock cache to return stake data
+      jest.spyOn(cache, 'get').mockResolvedValueOnce('2000.5');
+
+      const response = await request(app)
+        .get('/api/identity/' + validAddress + '/stake')
+        .expect(200);
+
+      expect(response.body.stake).toBe('2000.5');
+      expect(mockGetIdentity).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
     });
   });
 
@@ -147,6 +220,47 @@ describe('Identity Routes', () => {
       expect(mockGetFilteredIdentities).toHaveBeenCalledWith(
         expect.objectContaining({ states: ['Human', 'Verified'] })
       );
+    });
+
+    it('should filter by minStake', async () => {
+      mockGetFilteredIdentities.mockResolvedValueOnce({
+        total: 1,
+        limit: 100,
+        offset: 0,
+        data: [],
+      });
+
+      await request(app).get('/api/identity?minStake=1000').expect(200);
+
+      expect(mockGetFilteredIdentities).toHaveBeenCalledWith(
+        expect.objectContaining({ minStake: 1000 })
+      );
+    });
+
+    it('should handle RPC errors gracefully', async () => {
+      mockGetFilteredIdentities.mockRejectedValueOnce(new Error('RPC connection failed'));
+
+      const response = await request(app).get('/api/identity').expect(500);
+
+      expect(response.body.error).toHaveProperty('message');
+    });
+
+    it('should return cached identities when available', async () => {
+      const cachedResult = {
+        total: 2,
+        limit: 100,
+        offset: 0,
+        data: [{ address: '0x111', state: 'Human' }],
+      };
+
+      jest.spyOn(cache, 'get').mockResolvedValueOnce(cachedResult);
+
+      const response = await request(app).get('/api/identity').expect(200);
+
+      expect(response.body).toEqual(cachedResult);
+      expect(mockGetFilteredIdentities).not.toHaveBeenCalled();
+
+      cache.get.mockRestore();
     });
   });
 });

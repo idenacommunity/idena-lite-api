@@ -38,6 +38,51 @@ describe('Health Endpoint', () => {
       expect(response.body).toHaveProperty('idenaNode');
       expect(response.body.idenaNode).toHaveProperty('healthy');
     });
+
+    it('should return 503 when node is unhealthy', async () => {
+      const IdenaRPC = require('../src/rpc');
+      IdenaRPC.mockImplementation(() => ({
+        getNodeHealth: jest.fn().mockResolvedValue({
+          healthy: false,
+          error: 'Connection refused',
+          timestamp: new Date().toISOString(),
+        }),
+      }));
+
+      // Need to re-import to get new mock
+      jest.resetModules();
+      jest.mock('../src/rpc', () => {
+        return jest.fn().mockImplementation(() => ({
+          getNodeHealth: jest.fn().mockResolvedValue({
+            healthy: false,
+            error: 'Connection refused',
+            timestamp: new Date().toISOString(),
+          }),
+        }));
+      });
+
+      const appWithUnhealthyNode = require('../src/server');
+      const response = await request(appWithUnhealthyNode).get('/api/health');
+
+      expect(response.status).toBe(503);
+      expect(response.body.idenaNode.healthy).toBe(false);
+    });
+
+    it('should return 503 with error details when health check throws', async () => {
+      jest.resetModules();
+      jest.mock('../src/rpc', () => {
+        return jest.fn().mockImplementation(() => ({
+          getNodeHealth: jest.fn().mockRejectedValue(new Error('RPC connection failed')),
+        }));
+      });
+
+      const appWithError = require('../src/server');
+      const response = await request(appWithError).get('/api/health');
+
+      expect(response.status).toBe(503);
+      expect(response.body.api.status).toBe('error');
+      expect(response.body).toHaveProperty('error');
+    });
   });
 
   describe('GET /api/ping', () => {
