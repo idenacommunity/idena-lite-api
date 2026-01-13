@@ -2,6 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ Repository Guidelines
+
+**IMPORTANT: This is a public, ongoing, community-maintained project that MUST remain anonymous.**
+
+### Anonymity Requirements
+- **ALL commits** must be authored by "Idena Community <communityidena@gmail.com>"
+- **NEVER** include personal names, emails, or identifying information in commits, code comments, or documentation
+- **ALWAYS** use the anonymous SSH key (`~/.ssh/id_ed25519_idenacommunity`) when pushing changes
+- Git configuration must be set to anonymous credentials before any commit:
+  ```bash
+  git config user.name "Idena Community"
+  git config user.email "communityidena@gmail.com"
+  ```
+
+### Project Status
+- **Visibility**: Public repository on GitHub (https://github.com/idenacommunity/idena-lite-api)
+- **Status**: Production ready, ongoing development
+- **Maintenance**: Community-maintained by anonymous contributors
+- **Contributions**: All contributions welcome, but must follow anonymity guidelines
+- **Purpose**: Decentralized alternative to centralized api.idena.io
+
+### When Working on This Project
+1. Always verify git config before committing
+2. Use anonymous commit messages
+3. Never reference personal projects or identities
+4. Keep focus on community benefit and decentralization
+5. Document clearly for future anonymous contributors
+6. Consider privacy implications when adding features
+
 ## Project Overview
 
 **idena-lite-api** is a lightweight, community-maintained REST API for the Idena blockchain built with Node.js/Express. It serves as a stateless caching proxy for Idena RPC nodes, providing a fast and easy-to-deploy alternative to the centralized api.idena.io.
