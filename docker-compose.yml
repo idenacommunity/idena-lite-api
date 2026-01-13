@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    image: idena-lite-api:latest
+    container_name: idena-lite-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - IDENA_RPC_URL=${IDENA_RPC_URL:-http://host.docker.internal:9009}
+      - IDENA_API_KEY=${IDENA_API_KEY:-}
+      - REDIS_URL=redis://redis:6379
+      - REDIS_ENABLED=true
+      - CACHE_TTL=300
+    depends_on:
+      - redis
+    networks:
+      - idena-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/ping', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: idena-lite-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - idena-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  idena-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
