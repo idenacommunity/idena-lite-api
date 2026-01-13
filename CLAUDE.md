@@ -60,6 +60,7 @@ src/
     ├── identity.js     # GET /api/identity/:address, /api/identity/:address/stake, /api/identity
     ├── balance.js      # GET /api/balance/:address
     ├── transaction.js  # GET /api/transaction/:hash
+    ├── block.js        # GET /api/block/:heightOrHash
     ├── epoch.js        # GET /api/epoch/current, /api/epoch/intervals
     └── health.js       # GET /api/health, /api/ping
 
@@ -240,6 +241,7 @@ JSON Response
 - Stake: 300s (5 minutes)
 - Balance: 300s (5 minutes)
 - Transaction: 600s (10 minutes - transactions are immutable)
+- Block: 600s (10 minutes - blocks are immutable)
 - Identities list: 120s (2 minutes - more volatile)
 - Epoch current: 60s (1 minute)
 - Epoch intervals: 600s (10 minutes - rarely changes)
@@ -285,6 +287,16 @@ GET /api/balance/{address}
 # Get transaction by hash
 GET /api/transaction/{hash}
 # Response: { "result": { "hash": "0x...", "type": "send", "from": "0x...", "to": "0x...", "amount": "100.5", ... } }
+```
+
+### Block Endpoint
+```bash
+# Get block by height
+GET /api/block/12345
+
+# Get block by hash
+GET /api/block/{hash}
+# Response: { "result": { "height": 12345, "hash": "0x...", "parentHash": "0x...", "timestamp": ..., ... } }
 ```
 
 ### Epoch Endpoints

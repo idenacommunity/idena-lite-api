@@ -111,6 +111,17 @@ GET /api/transaction/0x1234567890abcdef...
 # Response: { "result": { "hash": "0x...", "type": "send", "from": "0x...", "to": "0x...", "amount": "100.5", ... } }
 ```
 
+### Block Endpoint
+```bash
+# Get block by height
+GET /api/block/12345
+
+# Get block by hash
+GET /api/block/0x1234567890abcdef...
+
+# Response: { "result": { "height": 12345, "hash": "0x...", "parentHash": "0x...", "timestamp": ..., ... } }
+```
+
 ### Epoch Endpoints
 ```bash
 # Get current epoch
