@@ -60,6 +60,44 @@ describe('IdenaRPC Client', () => {
 
       await expect(rpc.call('dna_epoch')).rejects.toThrow('Network error');
     });
+
+    it('should handle HTTP error response', async () => {
+      const httpError = new Error('Request failed');
+      httpError.response = {
+        status: 500,
+        data: {
+          error: {
+            message: 'Internal server error',
+          },
+        },
+      };
+      axios.post.mockRejectedValue(httpError);
+
+      await expect(rpc.call('dna_epoch')).rejects.toThrow('RPC call failed: Internal server error');
+    });
+
+    it('should handle HTTP error response without error message', async () => {
+      const httpError = new Error('Request failed with status 500');
+      httpError.response = {
+        status: 500,
+        data: {},
+      };
+      axios.post.mockRejectedValue(httpError);
+
+      await expect(rpc.call('dna_epoch')).rejects.toThrow('RPC call failed: Request failed with status 500');
+    });
+
+    it('should handle RPC error without message', async () => {
+      axios.post.mockResolvedValue({
+        data: {
+          jsonrpc: '2.0',
+          error: {},
+          id: 1,
+        },
+      });
+
+      await expect(rpc.call('invalid_method')).rejects.toThrow('RPC error');
+    });
   });
 
   describe('getIdentity', () => {
@@ -101,6 +139,183 @@ describe('IdenaRPC Client', () => {
     });
   });
 
+  describe('getCeremonyIntervals', () => {
+    it('should fetch ceremony intervals', async () => {
+      const mockIntervals = {
+        FlipLotteryDuration: 300,
+        ShortSessionDuration: 120,
+        LongSessionDuration: 1800,
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockIntervals },
+      });
+
+      const result = await rpc.getCeremonyIntervals();
+
+      expect(result).toEqual(mockIntervals);
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://test-node:9009',
+        expect.objectContaining({
+          method: 'dna_ceremonyIntervals',
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('getNetworkSize', () => {
+    it('should return count of identities', async () => {
+      const mockIdentities = [{ address: '0x1' }, { address: '0x2' }, { address: '0x3' }];
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentities },
+      });
+
+      const result = await rpc.getNetworkSize();
+
+      expect(result).toBe(3);
+    });
+
+    it('should return 0 when identities is null', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: null },
+      });
+
+      const result = await rpc.getNetworkSize();
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('getStake', () => {
+    it('should return stake for identity', async () => {
+      const mockIdentity = {
+        address: '0x123',
+        state: 'Human',
+        stake: '1500.5',
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentity },
+      });
+
+      const result = await rpc.getStake('0x123');
+
+      expect(result).toBe('1500.5');
+    });
+
+    it('should return null when identity not found', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: null },
+      });
+
+      const result = await rpc.getStake('0x123');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getBalance', () => {
+    it('should fetch balance for address', async () => {
+      const mockBalance = {
+        balance: '1000.5',
+        stake: '500.25',
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockBalance },
+      });
+
+      const result = await rpc.getBalance('0x123');
+
+      expect(result).toEqual(mockBalance);
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://test-node:9009',
+        expect.objectContaining({
+          method: 'dna_getBalance',
+          params: ['0x123'],
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('getTransaction', () => {
+    it('should fetch transaction by hash', async () => {
+      const mockTx = {
+        hash: '0xabc123',
+        type: 'send',
+        from: '0x123',
+        to: '0x456',
+        amount: '100',
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockTx },
+      });
+
+      const result = await rpc.getTransaction('0xabc123');
+
+      expect(result).toEqual(mockTx);
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://test-node:9009',
+        expect.objectContaining({
+          method: 'bcn_transaction',
+          params: ['0xabc123'],
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('getBlockByHeight', () => {
+    it('should fetch block by height', async () => {
+      const mockBlock = {
+        height: 12345,
+        hash: '0xblock123',
+        parentHash: '0xparent123',
+        timestamp: 1234567890,
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockBlock },
+      });
+
+      const result = await rpc.getBlockByHeight(12345);
+
+      expect(result).toEqual(mockBlock);
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://test-node:9009',
+        expect.objectContaining({
+          method: 'bcn_blockAt',
+          params: [12345],
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('getBlockByHash', () => {
+    it('should fetch block by hash', async () => {
+      const mockBlock = {
+        height: 12345,
+        hash: '0xblock123',
+        parentHash: '0xparent123',
+        timestamp: 1234567890,
+      };
+      axios.post.mockResolvedValue({
+        data: { result: mockBlock },
+      });
+
+      const result = await rpc.getBlockByHash('0xblock123');
+
+      expect(result).toEqual(mockBlock);
+      expect(axios.post).toHaveBeenCalledWith(
+        'http://test-node:9009',
+        expect.objectContaining({
+          method: 'bcn_block',
+          params: ['0xblock123'],
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
   describe('getNodeHealth', () => {
     it('should return healthy status when node responds', async () => {
       axios.post.mockResolvedValue({
@@ -131,13 +346,21 @@ describe('IdenaRPC Client', () => {
       { address: '0x3', state: 'Human', stake: '2000' },
     ];
 
-    beforeEach(() => {
+    it('should return empty array when identities is null', async () => {
       axios.post.mockResolvedValue({
-        data: { result: mockIdentities },
+        data: { result: null },
       });
+
+      const result = await rpc.getFilteredIdentities();
+
+      expect(result).toEqual([]);
     });
 
     it('should return all identities without filters', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentities },
+      });
+
       const result = await rpc.getFilteredIdentities();
 
       expect(result.total).toBe(3);
@@ -145,6 +368,10 @@ describe('IdenaRPC Client', () => {
     });
 
     it('should filter by state', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentities },
+      });
+
       const result = await rpc.getFilteredIdentities({
         states: ['Human'],
       });
@@ -155,6 +382,10 @@ describe('IdenaRPC Client', () => {
     });
 
     it('should filter by minimum stake', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentities },
+      });
+
       const result = await rpc.getFilteredIdentities({
         minStake: 1000,
       });
@@ -164,6 +395,10 @@ describe('IdenaRPC Client', () => {
     });
 
     it('should paginate results', async () => {
+      axios.post.mockResolvedValue({
+        data: { result: mockIdentities },
+      });
+
       const result = await rpc.getFilteredIdentities({
         limit: 2,
         offset: 1,
