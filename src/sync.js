@@ -26,7 +26,7 @@ class SyncService {
   /**
    * Start the sync process
    */
-  async start() {
+  start() {
     if (!this.enabled) {
       console.log('Historical sync disabled');
       return;
@@ -86,7 +86,7 @@ class SyncService {
   async _syncBatch() {
     // Get current sync status
     const status = historyDB.getSyncStatus();
-    if (!status) return;
+    if (!status) {return;}
 
     // Get current chain height from RPC
     let currentHeight;
@@ -202,7 +202,7 @@ class SyncService {
    * Track balance changes from transactions
    * Creates balance_change records for tx_in and tx_out events
    */
-  async _trackBalanceChangesFromTransactions(transactions, blocks) {
+  _trackBalanceChangesFromTransactions(transactions, blocks) {
     try {
       const balanceChanges = [];
       const blockMap = new Map(blocks.map(b => [b.height, b]));
@@ -216,10 +216,10 @@ class SyncService {
         const amount = tx.amount || '0';
 
         // Skip zero-amount transactions
-        if (amount === '0' || amount === 0) continue;
+        if (amount === '0' || amount === 0) {continue;}
 
         // Skip if no valid addresses
-        if (!tx.from && !tx.to) continue;
+        if (!tx.from && !tx.to) {continue;}
 
         // Check if this is a transfer-type transaction
         const isTransfer = transferTypes.some(t =>
@@ -291,7 +291,7 @@ class SyncService {
    * Track invites from transactions
    * Creates invite records for InviteTx and ActivationTx transactions
    */
-  async _trackInvitesFromTransactions(transactions, blocks) {
+  _trackInvitesFromTransactions(transactions, blocks) {
     try {
       const invites = [];
       const activations = [];
@@ -368,7 +368,7 @@ class SyncService {
    * Track contracts from transactions
    * Creates contract and contract_call records for contract-related transactions
    */
-  async _trackContractsFromTransactions(transactions, blocks) {
+  _trackContractsFromTransactions(transactions, blocks) {
     try {
       const contracts = [];
       const contractCalls = [];
@@ -496,10 +496,10 @@ class SyncService {
    * Derive contract address from deployer and nonce
    * This is a simplified version - actual derivation depends on Idena's implementation
    */
-  _deriveContractAddress(deployer, nonce) {
+  _deriveContractAddress(deployer, _nonce) {
     // In Idena, contract address derivation may differ from Ethereum
     // This is a placeholder - actual implementation would need to match Idena's algorithm
-    if (!deployer) return null;
+    if (!deployer) {return null;}
 
     // For now, return null and rely on tx.to containing the contract address
     // In production, this should implement Idena's address derivation
@@ -510,7 +510,7 @@ class SyncService {
    * Detect epoch boundaries in a batch of blocks
    */
   async _detectEpochBoundaries(blocks) {
-    if (!blocks.length) return;
+    if (!blocks.length) {return;}
 
     // Sort blocks by height to process in order
     const sortedBlocks = [...blocks].sort((a, b) => a.height - b.height);
@@ -561,10 +561,10 @@ class SyncService {
   /**
    * Create a new epoch record
    */
-  async _createEpoch(epochNum, firstBlock) {
+  _createEpoch(epochNum, firstBlock) {
     // Check if epoch already exists
     const existing = historyDB.getEpoch(epochNum);
-    if (existing) return;
+    if (existing) {return;}
 
     historyDB.insertEpoch({
       epoch: epochNum,
@@ -580,7 +580,7 @@ class SyncService {
   /**
    * Close an epoch when a new one starts
    */
-  async _closeEpoch(epochNum, lastBlock) {
+  _closeEpoch(epochNum, lastBlock) {
     // Calculate epoch statistics
     const stats = this._calculateEpochStats(epochNum);
 
@@ -591,11 +591,9 @@ class SyncService {
   /**
    * Calculate statistics for an epoch
    */
-  _calculateEpochStats(epochNum) {
-    // Count blocks and transactions in this epoch
-    const stats = historyDB.getStats();
-
-    // For now, return minimal stats - can be enhanced later
+  _calculateEpochStats(_epochNum) {
+    // Count blocks and transactions in this epoch - can be enhanced later
+    // const stats = historyDB.getStats();
     return {
       blockCount: null, // Will be calculated from end_block - start_block
       txCount: null,
@@ -645,7 +643,7 @@ class SyncService {
   /**
    * Snapshot address balances at epoch boundary
    */
-  async _snapshotAddressStates(epochNum, identities, block) {
+  async _snapshotAddressStates(epochNum, identities, _block) {
     try {
       const addressStates = [];
 
@@ -687,7 +685,7 @@ class SyncService {
    * Called after epoch closes (when new epoch starts)
    */
   async _fetchEpochRewards(epochNum) {
-    if (!this.epochSnapshotEnabled) return;
+    if (!this.epochSnapshotEnabled) {return;}
 
     try {
       // Get all identities that were active in this epoch
@@ -848,13 +846,13 @@ class SyncService {
    * Alternative: Calculate rewards from identity state transitions
    * This can be used as a fallback if epoch-specific RPC calls aren't available
    */
-  async _calculateRewardsFromStates(epochNum) {
-    if (!this.epochSnapshotEnabled) return;
+  _calculateRewardsFromStates(epochNum) {
+    if (!this.epochSnapshotEnabled) {return;}
 
     try {
       // Get identity states for this epoch
       const currentStates = historyDB.getEpochIdentities(epochNum, { limit: 10000, offset: 0 });
-      if (!currentStates.data || currentStates.data.length === 0) return;
+      if (!currentStates.data || currentStates.data.length === 0) {return;}
 
       const validationResults = [];
 
@@ -912,7 +910,7 @@ class SyncService {
   async _fetchBlock(height) {
     try {
       const block = await this.rpc.call('bcn_blockAt', [height]);
-      if (!block) return null;
+      if (!block) {return null;}
 
       return {
         height: block.height,
@@ -923,7 +921,7 @@ class SyncService {
         txCount: block.transactions?.length || 0,
         transactions: block.transactions || [],
       };
-    } catch (error) {
+    } catch {
       // Block might not exist yet
       return null;
     }

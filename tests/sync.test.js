@@ -114,7 +114,7 @@ describe('SyncService', () => {
       mockGetSyncStatus.mockReturnValue(null);
 
       // Start and immediately stop to prevent infinite loop
-      const startPromise = syncService.start();
+      syncService.start();
       await new Promise(resolve => setTimeout(resolve, 50));
       syncService.stop();
 

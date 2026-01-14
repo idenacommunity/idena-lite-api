@@ -278,7 +278,7 @@ class HistoryDB {
    * Get sync status
    */
   getSyncStatus() {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare('SELECT * FROM sync_status WHERE id = 1').get();
     return {
@@ -297,7 +297,7 @@ class HistoryDB {
    * Update sync status
    */
   updateSyncStatus(lastSyncedBlock, highestKnownBlock = null, isSyncing = null) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const updates = ['last_synced_block = ?', 'last_sync_time = ?'];
     const params = [lastSyncedBlock, Math.floor(Date.now() / 1000)];
@@ -320,7 +320,7 @@ class HistoryDB {
    * Set sync start block (for progress calculation)
    */
   setSyncStartBlock(startBlock) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
     this.db.prepare('UPDATE sync_status SET sync_start_block = ? WHERE id = 1').run(startBlock);
   }
 
@@ -328,7 +328,7 @@ class HistoryDB {
    * Insert a block
    */
   insertBlock(block) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO blocks (height, hash, timestamp, epoch, proposer, tx_count)
@@ -349,7 +349,7 @@ class HistoryDB {
    * Insert a transaction
    */
   insertTransaction(tx) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO transactions (hash, block_height, tx_index, type, from_addr, to_addr, amount, fee, nonce, timestamp)
@@ -374,7 +374,7 @@ class HistoryDB {
    * Batch insert blocks and transactions (for efficiency)
    */
   insertBatch(blocks, transactions) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const insertBlock = this.db.prepare(`
       INSERT OR REPLACE INTO blocks (height, hash, timestamp, epoch, proposer, tx_count)
@@ -432,7 +432,7 @@ class HistoryDB {
     const addrLower = address.toLowerCase();
 
     let whereClause = '(LOWER(from_addr) = ? OR LOWER(to_addr) = ?)';
-    let params = [addrLower, addrLower];
+    const params = [addrLower, addrLower];
 
     if (type) {
       whereClause += ' AND type = ?';
@@ -476,10 +476,10 @@ class HistoryDB {
    * Get block by height
    */
   getBlock(height) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare('SELECT * FROM blocks WHERE height = ?').get(height);
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       height: row.height,
@@ -495,7 +495,7 @@ class HistoryDB {
    * Get transaction by hash
    */
   getTransaction(hash) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT t.*, b.epoch
@@ -504,7 +504,7 @@ class HistoryDB {
       WHERE t.hash = ?
     `).get(hash);
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       hash: row.hash,
@@ -567,7 +567,7 @@ class HistoryDB {
    * Insert or update an epoch
    */
   insertEpoch(epoch) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO epochs (
@@ -594,7 +594,7 @@ class HistoryDB {
    * Update epoch end data (when epoch closes)
    */
   closeEpoch(epochNum, endBlock, endTimestamp, stats = {}) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       UPDATE epochs SET
@@ -622,10 +622,10 @@ class HistoryDB {
    * Get epoch by number
    */
   getEpoch(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare('SELECT * FROM epochs WHERE epoch = ?').get(epochNum);
-    if (!row) return null;
+    if (!row) {return null;}
 
     return this._formatEpochRow(row);
   }
@@ -634,10 +634,10 @@ class HistoryDB {
    * Get the last (most recent) epoch
    */
   getLastEpoch() {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare('SELECT * FROM epochs ORDER BY epoch DESC LIMIT 1').get();
-    if (!row) return null;
+    if (!row) {return null;}
 
     return this._formatEpochRow(row);
   }
@@ -667,7 +667,7 @@ class HistoryDB {
    * Get epoch by block height
    */
   getEpochByBlock(blockHeight) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT * FROM epochs
@@ -675,7 +675,7 @@ class HistoryDB {
       ORDER BY epoch DESC LIMIT 1
     `).get(blockHeight, blockHeight);
 
-    if (!row) return null;
+    if (!row) {return null;}
     return this._formatEpochRow(row);
   }
 
@@ -705,7 +705,7 @@ class HistoryDB {
    * Insert identity state for an epoch
    */
   insertIdentityState(identityState) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO identity_states (
@@ -727,7 +727,7 @@ class HistoryDB {
    * Batch insert identity states (for epoch boundary snapshots)
    */
   insertIdentityStatesBatch(states) {
-    if (!this.enabled || !this.db || !states.length) return;
+    if (!this.enabled || !this.db || !states.length) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO identity_states (
@@ -755,14 +755,14 @@ class HistoryDB {
    * Get identity state for address at specific epoch
    */
   getIdentityState(address, epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT * FROM identity_states
       WHERE LOWER(address) = LOWER(?) AND epoch = ?
     `).get(address, epochNum);
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       address: row.address,
@@ -823,7 +823,7 @@ class HistoryDB {
     const { limit = 50, offset = 0, state = null } = options;
 
     let whereClause = 'epoch = ?';
-    let params = [epochNum];
+    const params = [epochNum];
 
     if (state) {
       whereClause += ' AND state = ?';
@@ -857,7 +857,7 @@ class HistoryDB {
    * Get identity state counts for an epoch (summary)
    */
   getEpochIdentitySummary(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const rows = this.db.prepare(`
       SELECT state, COUNT(*) as count
@@ -882,7 +882,7 @@ class HistoryDB {
    * Insert address state for an epoch
    */
   insertAddressState(addressState) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO address_states (
@@ -903,7 +903,7 @@ class HistoryDB {
    * Batch insert address states
    */
   insertAddressStatesBatch(states) {
-    if (!this.enabled || !this.db || !states.length) return;
+    if (!this.enabled || !this.db || !states.length) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO address_states (
@@ -930,14 +930,14 @@ class HistoryDB {
    * Get address state at specific epoch
    */
   getAddressState(address, epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT * FROM address_states
       WHERE LOWER(address) = LOWER(?) AND epoch = ?
     `).get(address, epochNum);
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       address: row.address,
@@ -993,7 +993,7 @@ class HistoryDB {
    * Insert a single reward
    */
   insertReward(address, epoch, type, amount) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT OR REPLACE INTO rewards (address, epoch, type, amount)
@@ -1005,7 +1005,7 @@ class HistoryDB {
    * Insert multiple rewards in a transaction
    */
   insertRewardsBatch(rewards) {
-    if (!this.enabled || !this.db || rewards.length === 0) return;
+    if (!this.enabled || !this.db || rewards.length === 0) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO rewards (address, epoch, type, amount)
@@ -1070,7 +1070,7 @@ class HistoryDB {
    * Get rewards for identity at specific epoch
    */
   getIdentityRewardsAtEpoch(address, epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const rows = this.db.prepare(`
       SELECT * FROM rewards
@@ -1078,7 +1078,7 @@ class HistoryDB {
       ORDER BY type ASC
     `).all(address, epochNum);
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {return null;}
 
     const rewards = {};
     let totalAmount = 0;
@@ -1141,7 +1141,7 @@ class HistoryDB {
    * Get reward summary by type for an epoch
    */
   getEpochRewardsSummary(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const rows = this.db.prepare(`
       SELECT
@@ -1155,7 +1155,7 @@ class HistoryDB {
       ORDER BY total_amount DESC
     `).all(epochNum);
 
-    if (rows.length === 0) return null;
+    if (rows.length === 0) {return null;}
 
     const summary = {};
     let grandTotal = 0;
@@ -1187,7 +1187,7 @@ class HistoryDB {
    * Insert a validation result
    */
   insertValidationResult(result) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT OR REPLACE INTO validation_results (
@@ -1213,7 +1213,7 @@ class HistoryDB {
    * Insert multiple validation results in a transaction
    */
   insertValidationResultsBatch(results) {
-    if (!this.enabled || !this.db || results.length === 0) return;
+    if (!this.enabled || !this.db || results.length === 0) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO validation_results (
@@ -1247,14 +1247,14 @@ class HistoryDB {
    * Get validation result for identity at specific epoch
    */
   getValidationResult(address, epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT * FROM validation_results
       WHERE LOWER(address) = LOWER(?) AND epoch = ?
     `).get(address, epochNum);
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       address: row.address,
@@ -1328,7 +1328,7 @@ class HistoryDB {
    * Get validation summary for an epoch
    */
   getEpochValidationSummary(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT
@@ -1344,7 +1344,7 @@ class HistoryDB {
       WHERE epoch = ?
     `).get(epochNum);
 
-    if (!row || row.total_participants === 0) return null;
+    if (!row || row.total_participants === 0) {return null;}
 
     return {
       epoch: epochNum,
@@ -1367,7 +1367,7 @@ class HistoryDB {
    * Insert a balance change event
    */
   insertBalanceChange(change) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT INTO balance_changes (
@@ -1388,7 +1388,7 @@ class HistoryDB {
    * Insert multiple balance changes in a transaction
    */
   insertBalanceChangesBatch(changes) {
-    if (!this.enabled || !this.db || changes.length === 0) return;
+    if (!this.enabled || !this.db || changes.length === 0) {return;}
 
     const stmt = this.db.prepare(`
       INSERT INTO balance_changes (
@@ -1460,7 +1460,7 @@ class HistoryDB {
    * Get full address info (latest balance, stake, tx count, identity state)
    */
   getAddressInfo(address) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const addrLower = address.toLowerCase();
 
@@ -1499,7 +1499,7 @@ class HistoryDB {
       'SELECT SUM(CAST(penalty AS REAL)) as total FROM penalties WHERE LOWER(address) = ?'
     ).get(addrLower).total || 0;
 
-    if (!latestState && !latestIdentity) return null;
+    if (!latestState && !latestIdentity) {return null;}
 
     return {
       address: latestState?.address || latestIdentity?.address || address,
@@ -1524,7 +1524,7 @@ class HistoryDB {
    * Insert a penalty
    */
   insertPenalty(penalty) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT INTO penalties (
@@ -1544,7 +1544,7 @@ class HistoryDB {
    * Insert multiple penalties in a transaction
    */
   insertPenaltiesBatch(penalties) {
-    if (!this.enabled || !this.db || penalties.length === 0) return;
+    if (!this.enabled || !this.db || penalties.length === 0) {return;}
 
     const stmt = this.db.prepare(`
       INSERT INTO penalties (
@@ -1647,7 +1647,7 @@ class HistoryDB {
    * Get penalty summary for an epoch
    */
   getEpochPenaltySummary(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT
@@ -1658,7 +1658,7 @@ class HistoryDB {
       WHERE epoch = ?
     `).get(epochNum);
 
-    if (!row || row.total_penalties === 0) return null;
+    if (!row || row.total_penalties === 0) {return null;}
 
     // Get breakdown by reason
     const reasons = this.db.prepare(`
@@ -1693,7 +1693,7 @@ class HistoryDB {
    * Insert an invite
    */
   insertInvite(invite) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO invites (hash, inviter, invitee, epoch, activation_hash, activation_tx_hash, status, block_height, timestamp)
@@ -1717,7 +1717,7 @@ class HistoryDB {
    * Batch insert invites
    */
   insertInvitesBatch(invites) {
-    if (!this.enabled || !this.db || !invites.length) return;
+    if (!this.enabled || !this.db || !invites.length) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO invites (hash, inviter, invitee, epoch, activation_hash, activation_tx_hash, status, block_height, timestamp)
@@ -1747,7 +1747,7 @@ class HistoryDB {
    * Update invite status (e.g., when activated)
    */
   updateInviteStatus(hash, status, invitee = null, activationTxHash = null) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     const updates = ['status = ?'];
     const params = [status];
@@ -1770,10 +1770,10 @@ class HistoryDB {
    * Get invite by hash
    */
   getInvite(hash) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare('SELECT * FROM invites WHERE hash = ?').get(hash);
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       hash: row.hash,
@@ -1792,7 +1792,7 @@ class HistoryDB {
    * Get invites sent by an address
    */
   getAddressInvitesSent(address, options = {}) {
-    if (!this.enabled || !this.db) return { data: [], total: 0 };
+    if (!this.enabled || !this.db) {return { data: [], total: 0 };}
 
     const { limit = 50, offset = 0, epoch = null, status = null } = options;
 
@@ -1841,7 +1841,7 @@ class HistoryDB {
    * Get invites received by an address (where they are invitee)
    */
   getAddressInvitesReceived(address, options = {}) {
-    if (!this.enabled || !this.db) return { data: [], total: 0 };
+    if (!this.enabled || !this.db) {return { data: [], total: 0 };}
 
     const { limit = 50, offset = 0 } = options;
 
@@ -1879,7 +1879,7 @@ class HistoryDB {
    * Get all invites for an address (sent and received)
    */
   getAddressInvites(address, options = {}) {
-    if (!this.enabled || !this.db) return { data: [], total: 0 };
+    if (!this.enabled || !this.db) {return { data: [], total: 0 };}
 
     const { limit = 50, offset = 0, epoch = null, status = null, type = null } = options;
 
@@ -1958,7 +1958,7 @@ class HistoryDB {
    * Get invites for a specific epoch
    */
   getEpochInvites(epochNum, options = {}) {
-    if (!this.enabled || !this.db) return { data: [], total: 0 };
+    if (!this.enabled || !this.db) {return { data: [], total: 0 };}
 
     const { limit = 50, offset = 0, status = null } = options;
 
@@ -2002,7 +2002,7 @@ class HistoryDB {
    * Get invite statistics for an epoch
    */
   getEpochInvitesSummary(epochNum) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT
@@ -2015,7 +2015,7 @@ class HistoryDB {
       WHERE epoch = ?
     `).get(epochNum);
 
-    if (!row || row.total_invites === 0) return null;
+    if (!row || row.total_invites === 0) {return null;}
 
     return {
       epoch: epochNum,
@@ -2038,7 +2038,7 @@ class HistoryDB {
    * Add address to search index
    */
   indexAddress(address) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     try {
       this.db.prepare(`
@@ -2053,7 +2053,7 @@ class HistoryDB {
    * Add transaction to search index
    */
   indexTransaction(tx) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     try {
       this.db.prepare(`
@@ -2170,7 +2170,7 @@ class HistoryDB {
    * Search addresses by prefix
    */
   searchAddresses(prefix, limit = 20) {
-    if (!this.enabled || !this.db) return [];
+    if (!this.enabled || !this.db) {return [];}
 
     const rows = this.db.prepare(`
       SELECT DISTINCT address FROM (
@@ -2191,7 +2191,7 @@ class HistoryDB {
    * Search transactions by hash prefix
    */
   searchTransactions(prefix, limit = 20) {
-    if (!this.enabled || !this.db) return [];
+    if (!this.enabled || !this.db) {return [];}
 
     const rows = this.db.prepare(`
       SELECT t.*, b.epoch FROM transactions t
@@ -2217,7 +2217,7 @@ class HistoryDB {
    * Search blocks by hash prefix or height
    */
   searchBlocks(query, limit = 20) {
-    if (!this.enabled || !this.db) return [];
+    if (!this.enabled || !this.db) {return [];}
 
     // If numeric, search by height
     if (/^\d+$/.test(query)) {
@@ -2258,7 +2258,7 @@ class HistoryDB {
    * Insert a deployed contract
    */
   insertContract(contract) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT OR REPLACE INTO contracts (
@@ -2281,7 +2281,7 @@ class HistoryDB {
    * Batch insert contracts
    */
   insertContractsBatch(contracts) {
-    if (!this.enabled || !this.db || !contracts.length) return;
+    if (!this.enabled || !this.db || !contracts.length) {return;}
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO contracts (
@@ -2312,7 +2312,7 @@ class HistoryDB {
    * Insert a contract call
    */
   insertContractCall(call) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       INSERT INTO contract_calls (
@@ -2334,7 +2334,7 @@ class HistoryDB {
    * Batch insert contract calls
    */
   insertContractCallsBatch(calls) {
-    if (!this.enabled || !this.db || !calls.length) return;
+    if (!this.enabled || !this.db || !calls.length) {return;}
 
     const stmt = this.db.prepare(`
       INSERT INTO contract_calls (
@@ -2364,7 +2364,7 @@ class HistoryDB {
    * Update contract state
    */
   updateContractState(address, state) {
-    if (!this.enabled || !this.db) return;
+    if (!this.enabled || !this.db) {return;}
 
     this.db.prepare(`
       UPDATE contracts SET state = ? WHERE LOWER(address) = LOWER(?)
@@ -2375,13 +2375,13 @@ class HistoryDB {
    * Get contract by address
    */
   getContract(address) {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const row = this.db.prepare(`
       SELECT * FROM contracts WHERE LOWER(address) = LOWER(?)
     `).get(address);
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       address: row.address,
@@ -2576,7 +2576,7 @@ class HistoryDB {
    * Get contract summary statistics
    */
   getContractStats() {
-    if (!this.enabled || !this.db) return null;
+    if (!this.enabled || !this.db) {return null;}
 
     const stats = this.db.prepare(`
       SELECT

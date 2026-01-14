@@ -50,7 +50,7 @@ router.get('/online', async (req, res) => {
         timestamp: new Date().toISOString(),
       },
     });
-  } catch (error) {
+  } catch {
     // Fallback: try alternative RPC method
     try {
       const identities = await rpc.call('dna_onlineIdentities', []);
@@ -130,7 +130,7 @@ router.get('/coins', async (req, res) => {
         timestamp: new Date().toISOString(),
       },
     });
-  } catch (error) {
+  } catch {
     res.status(500).json({
       error: {
         message: 'Failed to fetch coin supply statistics',
@@ -194,7 +194,7 @@ router.get('/identities', async (req, res) => {
         timestamp: new Date().toISOString(),
       },
     });
-  } catch (error) {
+  } catch {
     res.status(500).json({
       error: {
         message: 'Failed to fetch identity statistics',
@@ -238,7 +238,7 @@ router.get('/summary', async (req, res) => {
         timestamp: new Date().toISOString(),
       },
     });
-  } catch (error) {
+  } catch {
     res.status(500).json({
       error: {
         message: 'Failed to fetch network summary',
@@ -272,7 +272,7 @@ router.get('/summary', async (req, res) => {
  *       503:
  *         description: Historical database not available
  */
-router.get('/epoch/:epoch', async (req, res) => {
+router.get('/epoch/:epoch', (req, res) => {
   const epochNum = parseInt(req.params.epoch);
 
   if (isNaN(epochNum) || epochNum < 0) {

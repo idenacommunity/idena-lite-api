@@ -155,7 +155,7 @@ describe('History Routes', () => {
         hasMore: true,
       });
 
-      const response = await request(app)
+      await request(app)
         .get(`/api/history/address/${validAddress}/transactions?limit=25&offset=50`)
         .expect(200);
 

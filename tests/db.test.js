@@ -3,7 +3,6 @@
  */
 
 const path = require('path');
-const fs = require('fs');
 const os = require('os');
 
 // Use a temporary database for tests
@@ -14,8 +13,6 @@ process.env.SQLITE_PATH = testDbPath;
 process.env.HISTORY_ENABLED = 'true';
 
 // Create a fresh instance for testing
-const Database = require('better-sqlite3');
-const { HistoryDB } = require('../src/db');
 
 describe('HistoryDB', () => {
   let db;
