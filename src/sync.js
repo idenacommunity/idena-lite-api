@@ -20,6 +20,7 @@ class SyncService {
     this.enabled = process.env.HISTORY_ENABLED !== 'false';
     this.lastSeenEpoch = null; // Track epoch for boundary detection
     this.epochSnapshotEnabled = process.env.EPOCH_SNAPSHOT_ENABLED !== 'false';
+    this.balanceTrackingEnabled = process.env.BALANCE_TRACKING_ENABLED !== 'false';
   }
 
   /**
@@ -174,11 +175,105 @@ class SyncService {
     if (blocks.length > 0) {
       historyDB.insertBatch(blocks, transactions);
 
+      // Track balance changes from transactions
+      if (this.balanceTrackingEnabled && transactions.length > 0) {
+        await this._trackBalanceChangesFromTransactions(transactions, blocks);
+      }
+
       // Detect epoch boundaries and handle them
       await this._detectEpochBoundaries(blocks);
 
       historyDB.updateSyncStatus(endBlock, currentHeight, true);
       console.log(`Synced ${blocks.length} blocks, ${transactions.length} transactions`);
+    }
+  }
+
+  /**
+   * Track balance changes from transactions
+   * Creates balance_change records for tx_in and tx_out events
+   */
+  async _trackBalanceChangesFromTransactions(transactions, blocks) {
+    try {
+      const balanceChanges = [];
+      const blockMap = new Map(blocks.map(b => [b.height, b]));
+
+      // Transaction types that affect balance
+      const transferTypes = ['send', 'transfer', 'SendTx', 'TransferTx'];
+
+      for (const tx of transactions) {
+        const block = blockMap.get(tx.blockHeight);
+        const timestamp = block?.timestamp || tx.timestamp;
+        const amount = tx.amount || '0';
+
+        // Skip zero-amount transactions
+        if (amount === '0' || amount === 0) continue;
+
+        // Skip if no valid addresses
+        if (!tx.from && !tx.to) continue;
+
+        // Check if this is a transfer-type transaction
+        const isTransfer = transferTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        // For sender (tx_out) - deduct from balance
+        if (tx.from && tx.from !== '0x0000000000000000000000000000000000000000') {
+          balanceChanges.push({
+            address: tx.from,
+            blockHeight: tx.blockHeight,
+            txHash: tx.hash,
+            changeType: 'tx_out',
+            amount: `-${amount}`, // Negative for outgoing
+            balanceAfter: null, // We'll calculate this if needed
+            timestamp,
+          });
+        }
+
+        // For receiver (tx_in) - add to balance
+        if (tx.to && isTransfer) {
+          balanceChanges.push({
+            address: tx.to,
+            blockHeight: tx.blockHeight,
+            txHash: tx.hash,
+            changeType: 'tx_in',
+            amount: amount,
+            balanceAfter: null,
+            timestamp,
+          });
+        }
+
+        // Handle special transaction types
+        if (tx.type === 'stake' || tx.type === 'StakeTx') {
+          balanceChanges.push({
+            address: tx.from,
+            blockHeight: tx.blockHeight,
+            txHash: tx.hash,
+            changeType: 'stake',
+            amount: `-${amount}`,
+            balanceAfter: null,
+            timestamp,
+          });
+        }
+
+        if (tx.type === 'unstake' || tx.type === 'UnstakeTx') {
+          balanceChanges.push({
+            address: tx.from,
+            blockHeight: tx.blockHeight,
+            txHash: tx.hash,
+            changeType: 'unstake',
+            amount: amount,
+            balanceAfter: null,
+            timestamp,
+          });
+        }
+      }
+
+      // Batch insert balance changes
+      if (balanceChanges.length > 0) {
+        historyDB.insertBalanceChangesBatch(balanceChanges);
+      }
+    } catch (error) {
+      console.error('Failed to track balance changes:', error.message);
     }
   }
 
@@ -376,6 +471,7 @@ class SyncService {
 
       const rewards = [];
       const validationResults = [];
+      const penalties = [];
       const addresses = identityStates.data.map(ids => ids.address);
 
       // Fetch rewards in batches
@@ -423,6 +519,30 @@ class SyncService {
                 });
               }
 
+              // Extract penalties if present
+              if (epochIdentity.penalty && epochIdentity.penalty !== '0') {
+                penalties.push({
+                  address: addr,
+                  epoch: epochNum,
+                  penalty: epochIdentity.penalty,
+                  reason: epochIdentity.penaltyReason || (validationResult.missedValidation ? 'missed_validation' : 'other'),
+                  blockHeight: null,
+                  timestamp: Math.floor(Date.now() / 1000),
+                });
+              }
+
+              // Also check for bad flip penalties
+              if (epochIdentity.badFlipPenalty && epochIdentity.badFlipPenalty !== '0') {
+                penalties.push({
+                  address: addr,
+                  epoch: epochNum,
+                  penalty: epochIdentity.badFlipPenalty,
+                  reason: 'bad_flip',
+                  blockHeight: null,
+                  timestamp: Math.floor(Date.now() / 1000),
+                });
+              }
+
               return validationResult;
             }
             return null;
@@ -440,11 +560,55 @@ class SyncService {
       if (rewards.length > 0) {
         historyDB.insertRewardsBatch(rewards);
         console.log(`Stored ${rewards.length} reward entries for epoch ${epochNum}`);
+
+        // Also track rewards as balance changes
+        if (this.balanceTrackingEnabled) {
+          const rewardBalanceChanges = rewards
+            .filter(r => r.amount && r.amount !== '0')
+            .map(r => ({
+              address: r.address,
+              blockHeight: null, // Rewards are epoch-level, not block-level
+              txHash: null,
+              changeType: 'reward',
+              amount: r.amount,
+              balanceAfter: null,
+              timestamp: Math.floor(Date.now() / 1000), // Use current time as approximation
+            }));
+
+          if (rewardBalanceChanges.length > 0) {
+            historyDB.insertBalanceChangesBatch(rewardBalanceChanges);
+          }
+        }
       }
 
       if (validationResults.length > 0) {
         historyDB.insertValidationResultsBatch(validationResults);
         console.log(`Stored ${validationResults.length} validation results for epoch ${epochNum}`);
+      }
+
+      // Store penalties
+      if (penalties.length > 0) {
+        historyDB.insertPenaltiesBatch(penalties);
+        console.log(`Stored ${penalties.length} penalties for epoch ${epochNum}`);
+
+        // Also track penalties as balance changes
+        if (this.balanceTrackingEnabled) {
+          const penaltyBalanceChanges = penalties
+            .filter(p => p.penalty && p.penalty !== '0')
+            .map(p => ({
+              address: p.address,
+              blockHeight: p.blockHeight,
+              txHash: null,
+              changeType: 'penalty',
+              amount: `-${p.penalty}`, // Negative for penalty
+              balanceAfter: null,
+              timestamp: p.timestamp,
+            }));
+
+          if (penaltyBalanceChanges.length > 0) {
+            historyDB.insertBalanceChangesBatch(penaltyBalanceChanges);
+          }
+        }
       }
     } catch (error) {
       console.error(`Failed to fetch epoch rewards for epoch ${epochNum}:`, error.message);

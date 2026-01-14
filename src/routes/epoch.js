@@ -591,4 +591,129 @@ router.get('/:epoch/validation', (req, res) => {
   res.json({ result: summary });
 });
 
+// ==========================================
+// Epoch Penalties Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/epoch/{epoch}/penalties:
+ *   get:
+ *     summary: Get epoch penalties list
+ *     description: Returns paginated list of penalties for this epoch
+ *     tags: [Penalties]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: List of penalties for epoch
+ *       400:
+ *         description: Invalid epoch number
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/:epoch/penalties', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+
+  const result = historyDB.getEpochPenalties(epochNum, { limit, offset });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/epoch/{epoch}/penalties/summary:
+ *   get:
+ *     summary: Get epoch penalties summary
+ *     description: Returns penalty totals and breakdown by reason for this epoch
+ *     tags: [Penalties]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Penalties summary by reason
+ *       400:
+ *         description: Invalid epoch number
+ *       404:
+ *         description: No penalty data for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/:epoch/penalties/summary', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const summary = historyDB.getEpochPenaltySummary(epochNum);
+
+  if (!summary) {
+    return res.status(404).json({
+      error: {
+        message: `No penalty data for epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: summary });
+});
+
 module.exports = router;

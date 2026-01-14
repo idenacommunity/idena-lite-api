@@ -1034,6 +1034,364 @@ describe('HistoryDB', () => {
       });
     });
   });
+
+  // ==========================================
+  // Balance Changes Methods
+  // ==========================================
+
+  describe('Balance Changes Methods', () => {
+    describe('insertBalanceChange()', () => {
+      it('should insert a balance change', () => {
+        db.insertBalanceChange({
+          address: '0xaddr1',
+          blockHeight: 1000,
+          txHash: '0xtx1',
+          changeType: 'tx_in',
+          amount: '100.5',
+          balanceAfter: '200.5',
+          timestamp: 1704067200,
+        });
+
+        const stats = db.getStats();
+        expect(stats.balanceChangeCount).toBe(1);
+      });
+
+      it('should allow null tx_hash for non-tx events', () => {
+        db.insertBalanceChange({
+          address: '0xaddr1',
+          blockHeight: 1000,
+          changeType: 'reward',
+          amount: '50.0',
+          balanceAfter: '150.0',
+          timestamp: 1704067200,
+        });
+
+        const result = db.getAddressBalanceChanges('0xaddr1');
+        expect(result.data[0].txHash).toBeNull();
+      });
+    });
+
+    describe('insertBalanceChangesBatch()', () => {
+      it('should insert multiple balance changes', () => {
+        db.insertBalanceChangesBatch([
+          { address: '0xaddr1', blockHeight: 1000, changeType: 'tx_in', amount: '100', timestamp: 1704067200 },
+          { address: '0xaddr1', blockHeight: 1001, changeType: 'tx_out', amount: '50', timestamp: 1704067300 },
+          { address: '0xaddr2', blockHeight: 1002, changeType: 'reward', amount: '10', timestamp: 1704067400 },
+        ]);
+
+        const stats = db.getStats();
+        expect(stats.balanceChangeCount).toBe(3);
+      });
+
+      it('should handle empty array', () => {
+        db.insertBalanceChangesBatch([]);
+        const stats = db.getStats();
+        expect(stats.balanceChangeCount).toBe(0);
+      });
+    });
+
+    describe('getAddressBalanceChanges()', () => {
+      beforeEach(() => {
+        db.insertBalanceChangesBatch([
+          { address: '0xaddr1', blockHeight: 1000, changeType: 'tx_in', amount: '100', balanceAfter: '100', timestamp: 1704067200 },
+          { address: '0xaddr1', blockHeight: 1001, changeType: 'tx_out', amount: '30', balanceAfter: '70', timestamp: 1704067300 },
+          { address: '0xaddr1', blockHeight: 1002, changeType: 'reward', amount: '10', balanceAfter: '80', timestamp: 1704067400 },
+          { address: '0xaddr2', blockHeight: 1003, changeType: 'tx_in', amount: '200', timestamp: 1704067500 },
+        ]);
+      });
+
+      it('should return balance changes for address', () => {
+        const result = db.getAddressBalanceChanges('0xaddr1');
+        expect(result.data.length).toBe(3);
+        expect(result.total).toBe(3);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getAddressBalanceChanges('0xaddr1', { limit: 2, offset: 0 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+
+      it('should filter by change type', () => {
+        const result = db.getAddressBalanceChanges('0xaddr1', { changeType: 'reward' });
+        expect(result.data.length).toBe(1);
+        expect(result.data[0].changeType).toBe('reward');
+      });
+
+      it('should be case insensitive', () => {
+        const result = db.getAddressBalanceChanges('0xADDR1');
+        expect(result.data.length).toBe(3);
+      });
+
+      it('should order by block height descending', () => {
+        const result = db.getAddressBalanceChanges('0xaddr1');
+        expect(result.data[0].blockHeight).toBe(1002);
+        expect(result.data[2].blockHeight).toBe(1000);
+      });
+    });
+
+    describe('getAddressInfo()', () => {
+      beforeEach(() => {
+        // Insert some address states
+        db.insertAddressStatesBatch([
+          { address: '0xaddr1', epoch: 150, balance: '1000', stake: '500', txCount: 10 },
+          { address: '0xaddr1', epoch: 149, balance: '900', stake: '400', txCount: 8 },
+        ]);
+
+        // Insert identity states
+        db.insertIdentityStatesBatch([
+          { address: '0xaddr1', epoch: 150, state: 'Human', prevState: 'Verified', timestamp: 1704067200 },
+        ]);
+
+        // Insert blocks first (required for foreign key)
+        db.insertBlock({
+          height: 1000,
+          hash: '0xblock1000',
+          timestamp: 1704067200,
+          epoch: 150,
+          proposer: '0xproposer',
+          txCount: 1,
+        });
+        db.insertBlock({
+          height: 1001,
+          hash: '0xblock1001',
+          timestamp: 1704067300,
+          epoch: 150,
+          proposer: '0xproposer',
+          txCount: 1,
+        });
+
+        // Insert some transactions
+        db.insertTransaction({
+          hash: '0xtx1',
+          blockHeight: 1000,
+          from: '0xaddr1',
+          to: '0xaddr2',
+          amount: '50',
+          type: 'send',
+          timestamp: 1704067200,
+        });
+        db.insertTransaction({
+          hash: '0xtx2',
+          blockHeight: 1001,
+          from: '0xaddr2',
+          to: '0xaddr1',
+          amount: '30',
+          type: 'send',
+          timestamp: 1704067300,
+        });
+
+        // Insert rewards
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '25' },
+        ]);
+
+        // Insert penalties
+        db.insertPenalty({
+          address: '0xaddr1',
+          epoch: 150,
+          penalty: '10',
+          reason: 'bad_flip',
+          timestamp: 1704067200,
+        });
+      });
+
+      it('should return full address info', () => {
+        const info = db.getAddressInfo('0xaddr1');
+        expect(info).not.toBeNull();
+        expect(info.balance).toBe('1000');
+        expect(info.stake).toBe('500');
+        expect(info.epoch).toBe(150);
+        expect(info.identityState).toBe('Human');
+        expect(info.prevIdentityState).toBe('Verified');
+        expect(info.txSent).toBe(1);
+        expect(info.txReceived).toBe(1);
+        expect(info.txTotal).toBe(2);
+        expect(parseFloat(info.totalRewards)).toBe(125);
+        expect(parseFloat(info.totalPenalties)).toBe(10);
+      });
+
+      it('should be case insensitive', () => {
+        const info = db.getAddressInfo('0xADDR1');
+        expect(info).not.toBeNull();
+      });
+
+      it('should return null for unknown address', () => {
+        const info = db.getAddressInfo('0xunknown000000000000000000000000000000');
+        expect(info).toBeNull();
+      });
+    });
+  });
+
+  // ==========================================
+  // Penalties Methods
+  // ==========================================
+
+  describe('Penalties Methods', () => {
+    describe('insertPenalty()', () => {
+      it('should insert a penalty', () => {
+        db.insertPenalty({
+          address: '0xaddr1',
+          epoch: 150,
+          penalty: '50.5',
+          reason: 'bad_flip',
+          blockHeight: 1000,
+          timestamp: 1704067200,
+        });
+
+        const stats = db.getStats();
+        expect(stats.penaltyCount).toBe(1);
+      });
+    });
+
+    describe('insertPenaltiesBatch()', () => {
+      it('should insert multiple penalties', () => {
+        db.insertPenaltiesBatch([
+          { address: '0xaddr1', epoch: 150, penalty: '50', reason: 'bad_flip', timestamp: 1704067200 },
+          { address: '0xaddr2', epoch: 150, penalty: '30', reason: 'missed_validation', timestamp: 1704067200 },
+          { address: '0xaddr3', epoch: 150, penalty: '20', reason: 'bad_flip', timestamp: 1704067200 },
+        ]);
+
+        const stats = db.getStats();
+        expect(stats.penaltyCount).toBe(3);
+      });
+
+      it('should handle empty array', () => {
+        db.insertPenaltiesBatch([]);
+        const stats = db.getStats();
+        expect(stats.penaltyCount).toBe(0);
+      });
+    });
+
+    describe('getAddressPenalties()', () => {
+      beforeEach(() => {
+        db.insertPenaltiesBatch([
+          { address: '0xaddr1', epoch: 150, penalty: '50', reason: 'bad_flip', timestamp: 1704067200 },
+          { address: '0xaddr1', epoch: 149, penalty: '30', reason: 'missed_validation', timestamp: 1704000000 },
+          { address: '0xaddr2', epoch: 150, penalty: '20', reason: 'bad_flip', timestamp: 1704067200 },
+        ]);
+      });
+
+      it('should return penalties for address', () => {
+        const result = db.getAddressPenalties('0xaddr1');
+        expect(result.data.length).toBe(2);
+        expect(result.total).toBe(2);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getAddressPenalties('0xaddr1', { limit: 1 });
+        expect(result.data.length).toBe(1);
+        expect(result.hasMore).toBe(true);
+      });
+
+      it('should filter by epoch', () => {
+        const result = db.getAddressPenalties('0xaddr1', { epoch: 150 });
+        expect(result.data.length).toBe(1);
+        expect(result.data[0].epoch).toBe(150);
+      });
+
+      it('should be case insensitive', () => {
+        const result = db.getAddressPenalties('0xADDR1');
+        expect(result.data.length).toBe(2);
+      });
+
+      it('should order by epoch descending', () => {
+        const result = db.getAddressPenalties('0xaddr1');
+        expect(result.data[0].epoch).toBe(150);
+        expect(result.data[1].epoch).toBe(149);
+      });
+    });
+
+    describe('getEpochPenalties()', () => {
+      beforeEach(() => {
+        db.insertPenaltiesBatch([
+          { address: '0xaddr1', epoch: 150, penalty: '50', reason: 'bad_flip', timestamp: 1704067200 },
+          { address: '0xaddr2', epoch: 150, penalty: '30', reason: 'missed_validation', timestamp: 1704067200 },
+          { address: '0xaddr3', epoch: 150, penalty: '100', reason: 'bad_flip', timestamp: 1704067200 },
+          { address: '0xaddr4', epoch: 149, penalty: '20', reason: 'bad_flip', timestamp: 1704000000 },
+        ]);
+      });
+
+      it('should return penalties for epoch', () => {
+        const result = db.getEpochPenalties(150);
+        expect(result.data.length).toBe(3);
+        expect(result.total).toBe(3);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getEpochPenalties(150, { limit: 2 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+
+      it('should order by penalty amount descending', () => {
+        const result = db.getEpochPenalties(150);
+        expect(result.data[0].penalty).toBe('100');
+        expect(result.data[1].penalty).toBe('50');
+      });
+
+      it('should return empty for epoch with no penalties', () => {
+        const result = db.getEpochPenalties(999);
+        expect(result.data.length).toBe(0);
+        expect(result.total).toBe(0);
+      });
+    });
+
+    describe('getEpochPenaltySummary()', () => {
+      beforeEach(() => {
+        db.insertPenaltiesBatch([
+          { address: '0xaddr1', epoch: 150, penalty: '50', reason: 'bad_flip', timestamp: 1704067200 },
+          { address: '0xaddr2', epoch: 150, penalty: '30', reason: 'missed_validation', timestamp: 1704067200 },
+          { address: '0xaddr3', epoch: 150, penalty: '100', reason: 'bad_flip', timestamp: 1704067200 },
+        ]);
+      });
+
+      it('should return penalty summary', () => {
+        const summary = db.getEpochPenaltySummary(150);
+        expect(summary).not.toBeNull();
+        expect(summary.epoch).toBe(150);
+        expect(summary.totalPenalties).toBe(3);
+        expect(summary.uniqueAddresses).toBe(3);
+        expect(parseFloat(summary.totalAmount)).toBe(180);
+      });
+
+      it('should group by reason', () => {
+        const summary = db.getEpochPenaltySummary(150);
+        expect(summary.byReason.bad_flip.count).toBe(2);
+        expect(parseFloat(summary.byReason.bad_flip.total)).toBe(150);
+        expect(summary.byReason.missed_validation.count).toBe(1);
+      });
+
+      it('should return null when no data', () => {
+        const summary = db.getEpochPenaltySummary(999);
+        expect(summary).toBeNull();
+      });
+    });
+  });
+
+  describe('getStats() with Phase 3 tables', () => {
+    it('should include balance change and penalty counts', () => {
+      db.insertBalanceChange({
+        address: '0xaddr1',
+        blockHeight: 1000,
+        changeType: 'tx_in',
+        amount: '100',
+        timestamp: 1704067200,
+      });
+      db.insertPenalty({
+        address: '0xaddr1',
+        epoch: 150,
+        penalty: '50',
+        reason: 'bad_flip',
+        timestamp: 1704067200,
+      });
+
+      const stats = db.getStats();
+      expect(stats.balanceChangeCount).toBe(1);
+      expect(stats.penaltyCount).toBe(1);
+    });
+  });
 });
 
 // Export the HistoryDB class for testing

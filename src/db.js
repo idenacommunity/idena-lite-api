@@ -156,6 +156,29 @@ class HistoryDB {
         UNIQUE(address, epoch)
       );
 
+      -- Balance changes table (track all balance-affecting events)
+      CREATE TABLE IF NOT EXISTS balance_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        block_height INTEGER NOT NULL,
+        tx_hash TEXT,
+        change_type TEXT NOT NULL,
+        amount TEXT DEFAULT '0',
+        balance_after TEXT DEFAULT '0',
+        timestamp INTEGER NOT NULL
+      );
+
+      -- Penalties table (track penalties per address per epoch)
+      CREATE TABLE IF NOT EXISTS penalties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        epoch INTEGER NOT NULL,
+        penalty TEXT DEFAULT '0',
+        reason TEXT,
+        block_height INTEGER,
+        timestamp INTEGER NOT NULL
+      );
+
       -- Indexes for efficient queries
       CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(LOWER(from_addr));
       CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(LOWER(to_addr));
@@ -173,6 +196,12 @@ class HistoryDB {
       CREATE INDEX IF NOT EXISTS idx_rewards_type ON rewards(type);
       CREATE INDEX IF NOT EXISTS idx_validation_results_addr ON validation_results(LOWER(address));
       CREATE INDEX IF NOT EXISTS idx_validation_results_epoch ON validation_results(epoch);
+      CREATE INDEX IF NOT EXISTS idx_balance_changes_addr ON balance_changes(LOWER(address));
+      CREATE INDEX IF NOT EXISTS idx_balance_changes_block ON balance_changes(block_height);
+      CREATE INDEX IF NOT EXISTS idx_balance_changes_type ON balance_changes(change_type);
+      CREATE INDEX IF NOT EXISTS idx_balance_changes_timestamp ON balance_changes(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_penalties_addr ON penalties(LOWER(address));
+      CREATE INDEX IF NOT EXISTS idx_penalties_epoch ON penalties(epoch);
     `);
   }
 
@@ -438,6 +467,8 @@ class HistoryDB {
     const identityStateCount = this.db.prepare('SELECT COUNT(*) as count FROM identity_states').get().count;
     const rewardCount = this.db.prepare('SELECT COUNT(*) as count FROM rewards').get().count;
     const validationResultCount = this.db.prepare('SELECT COUNT(*) as count FROM validation_results').get().count;
+    const balanceChangeCount = this.db.prepare('SELECT COUNT(*) as count FROM balance_changes').get().count;
+    const penaltyCount = this.db.prepare('SELECT COUNT(*) as count FROM penalties').get().count;
 
     return {
       enabled: true,
@@ -447,6 +478,8 @@ class HistoryDB {
       identityStateCount,
       rewardCount,
       validationResultCount,
+      balanceChangeCount,
+      penaltyCount,
       blockRange: minBlock && maxBlock ? { min: minBlock, max: maxBlock } : null,
     };
   }
@@ -1248,6 +1281,332 @@ class HistoryDB {
       totalRewards: row.total_rewards ? row.total_rewards.toString() : '0',
       totalFlipsMade: row.total_flips_made,
       totalFlipsQualified: row.total_flips_qualified,
+    };
+  }
+
+  // ==========================================
+  // Balance Changes Methods
+  // ==========================================
+
+  /**
+   * Insert a balance change event
+   */
+  insertBalanceChange(change) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT INTO balance_changes (
+        address, block_height, tx_hash, change_type, amount, balance_after, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      change.address,
+      change.blockHeight,
+      change.txHash || null,
+      change.changeType,
+      change.amount || '0',
+      change.balanceAfter || '0',
+      change.timestamp
+    );
+  }
+
+  /**
+   * Insert multiple balance changes in a transaction
+   */
+  insertBalanceChangesBatch(changes) {
+    if (!this.enabled || !this.db || changes.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO balance_changes (
+        address, block_height, tx_hash, change_type, amount, balance_after, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction(() => {
+      for (const c of changes) {
+        stmt.run(
+          c.address,
+          c.blockHeight,
+          c.txHash || null,
+          c.changeType,
+          c.amount || '0',
+          c.balanceAfter || '0',
+          c.timestamp
+        );
+      }
+    });
+
+    insertMany();
+  }
+
+  /**
+   * Get balance changes for an address (paginated)
+   */
+  getAddressBalanceChanges(address, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, changeType = null } = options;
+    const addrLower = address.toLowerCase();
+
+    let whereClause = 'WHERE LOWER(address) = ?';
+    const params = [addrLower];
+
+    if (changeType !== null) {
+      whereClause += ' AND change_type = ?';
+      params.push(changeType);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(*) as count FROM balance_changes ${whereClause}`
+    ).get(...params).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM balance_changes
+      ${whereClause}
+      ORDER BY block_height DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      blockHeight: row.block_height,
+      txHash: row.tx_hash,
+      changeType: row.change_type,
+      amount: row.amount,
+      balanceAfter: row.balance_after,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get full address info (latest balance, stake, tx count, identity state)
+   */
+  getAddressInfo(address) {
+    if (!this.enabled || !this.db) return null;
+
+    const addrLower = address.toLowerCase();
+
+    // Get latest address state
+    const latestState = this.db.prepare(`
+      SELECT * FROM address_states
+      WHERE LOWER(address) = ?
+      ORDER BY epoch DESC
+      LIMIT 1
+    `).get(addrLower);
+
+    // Get latest identity state
+    const latestIdentity = this.db.prepare(`
+      SELECT * FROM identity_states
+      WHERE LOWER(address) = ?
+      ORDER BY epoch DESC
+      LIMIT 1
+    `).get(addrLower);
+
+    // Get transaction counts
+    const txSent = this.db.prepare(
+      'SELECT COUNT(*) as count FROM transactions WHERE LOWER(from_addr) = ?'
+    ).get(addrLower).count;
+
+    const txReceived = this.db.prepare(
+      'SELECT COUNT(*) as count FROM transactions WHERE LOWER(to_addr) = ?'
+    ).get(addrLower).count;
+
+    // Get total rewards
+    const totalRewards = this.db.prepare(
+      'SELECT SUM(CAST(amount AS REAL)) as total FROM rewards WHERE LOWER(address) = ?'
+    ).get(addrLower).total || 0;
+
+    // Get total penalties
+    const totalPenalties = this.db.prepare(
+      'SELECT SUM(CAST(penalty AS REAL)) as total FROM penalties WHERE LOWER(address) = ?'
+    ).get(addrLower).total || 0;
+
+    if (!latestState && !latestIdentity) return null;
+
+    return {
+      address: latestState?.address || latestIdentity?.address || address,
+      balance: latestState?.balance || '0',
+      stake: latestState?.stake || '0',
+      epoch: latestState?.epoch || latestIdentity?.epoch,
+      identityState: latestIdentity?.state || null,
+      prevIdentityState: latestIdentity?.prev_state || null,
+      txSent,
+      txReceived,
+      txTotal: txSent + txReceived,
+      totalRewards: totalRewards.toString(),
+      totalPenalties: totalPenalties.toString(),
+    };
+  }
+
+  // ==========================================
+  // Penalties Methods
+  // ==========================================
+
+  /**
+   * Insert a penalty
+   */
+  insertPenalty(penalty) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT INTO penalties (
+        address, epoch, penalty, reason, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      penalty.address,
+      penalty.epoch,
+      penalty.penalty || '0',
+      penalty.reason || null,
+      penalty.blockHeight || null,
+      penalty.timestamp
+    );
+  }
+
+  /**
+   * Insert multiple penalties in a transaction
+   */
+  insertPenaltiesBatch(penalties) {
+    if (!this.enabled || !this.db || penalties.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO penalties (
+        address, epoch, penalty, reason, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction(() => {
+      for (const p of penalties) {
+        stmt.run(
+          p.address,
+          p.epoch,
+          p.penalty || '0',
+          p.reason || null,
+          p.blockHeight || null,
+          p.timestamp
+        );
+      }
+    });
+
+    insertMany();
+  }
+
+  /**
+   * Get penalties for an address (paginated)
+   */
+  getAddressPenalties(address, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, epoch = null } = options;
+    const addrLower = address.toLowerCase();
+
+    let whereClause = 'WHERE LOWER(address) = ?';
+    const params = [addrLower];
+
+    if (epoch !== null) {
+      whereClause += ' AND epoch = ?';
+      params.push(epoch);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(*) as count FROM penalties ${whereClause}`
+    ).get(...params).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM penalties
+      ${whereClause}
+      ORDER BY epoch DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      epoch: row.epoch,
+      penalty: row.penalty,
+      reason: row.reason,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get penalties for a specific epoch (paginated)
+   */
+  getEpochPenalties(epochNum, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0 } = options;
+
+    const total = this.db.prepare(
+      'SELECT COUNT(*) as count FROM penalties WHERE epoch = ?'
+    ).get(epochNum).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM penalties
+      WHERE epoch = ?
+      ORDER BY CAST(penalty AS REAL) DESC
+      LIMIT ? OFFSET ?
+    `).all(epochNum, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      address: row.address,
+      penalty: row.penalty,
+      reason: row.reason,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get penalty summary for an epoch
+   */
+  getEpochPenaltySummary(epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_penalties,
+        COUNT(DISTINCT address) as unique_addresses,
+        SUM(CAST(penalty AS REAL)) as total_amount
+      FROM penalties
+      WHERE epoch = ?
+    `).get(epochNum);
+
+    if (!row || row.total_penalties === 0) return null;
+
+    // Get breakdown by reason
+    const reasons = this.db.prepare(`
+      SELECT reason, COUNT(*) as count, SUM(CAST(penalty AS REAL)) as total
+      FROM penalties
+      WHERE epoch = ?
+      GROUP BY reason
+    `).all(epochNum);
+
+    const byReason = {};
+    for (const r of reasons) {
+      byReason[r.reason || 'unknown'] = {
+        count: r.count,
+        total: r.total ? r.total.toString() : '0',
+      };
+    }
+
+    return {
+      epoch: epochNum,
+      totalPenalties: row.total_penalties,
+      uniqueAddresses: row.unique_addresses,
+      totalAmount: row.total_amount ? row.total_amount.toString() : '0',
+      byReason,
     };
   }
 

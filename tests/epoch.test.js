@@ -11,6 +11,8 @@ const mockDbGetEpochIdentitySummary = jest.fn();
 const mockDbGetEpochRewards = jest.fn();
 const mockDbGetEpochRewardsSummary = jest.fn();
 const mockDbGetEpochValidationSummary = jest.fn();
+const mockDbGetEpochPenalties = jest.fn();
+const mockDbGetEpochPenaltySummary = jest.fn();
 
 // Mock RPC module
 jest.mock('../src/rpc', () => {
@@ -31,6 +33,8 @@ jest.mock('../src/db', () => ({
   getEpochRewards: mockDbGetEpochRewards,
   getEpochRewardsSummary: mockDbGetEpochRewardsSummary,
   getEpochValidationSummary: mockDbGetEpochValidationSummary,
+  getEpochPenalties: mockDbGetEpochPenalties,
+  getEpochPenaltySummary: mockDbGetEpochPenaltySummary,
 }));
 
 const request = require('supertest');
@@ -476,6 +480,103 @@ describe('Epoch Routes', () => {
       historyDB.enabled = false;
 
       await request(app).get('/api/epoch/150/validation').expect(503);
+
+      historyDB.enabled = true;
+    });
+  });
+
+  // ==========================================
+  // Epoch Penalties Endpoints Tests
+  // ==========================================
+
+  describe('GET /api/epoch/:epoch/penalties', () => {
+    it('should return paginated penalties list', async () => {
+      const mockResult = {
+        data: [
+          { address: '0xaddr1', penalty: '100', reason: 'bad_flip', blockHeight: 1000, timestamp: 1704067200 },
+          { address: '0xaddr2', penalty: '50', reason: 'missed_validation', blockHeight: 1001, timestamp: 1704067200 },
+        ],
+        total: 50,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      };
+      mockDbGetEpochPenalties.mockReturnValue(mockResult);
+
+      const response = await request(app).get('/api/epoch/150/penalties').expect(200);
+
+      expect(response.body.data.length).toBe(2);
+      expect(response.body.total).toBe(50);
+      expect(mockDbGetEpochPenalties).toHaveBeenCalledWith(150, expect.objectContaining({ limit: 50, offset: 0 }));
+    });
+
+    it('should support pagination', async () => {
+      mockDbGetEpochPenalties.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app).get('/api/epoch/150/penalties?limit=25&offset=50').expect(200);
+
+      expect(mockDbGetEpochPenalties).toHaveBeenCalledWith(150, expect.objectContaining({ limit: 25, offset: 50 }));
+    });
+
+    it('should return 400 for invalid epoch', async () => {
+      const response = await request(app).get('/api/epoch/invalid/penalties').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch', async () => {
+      const response = await request(app).get('/api/epoch/-1/penalties').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app).get('/api/epoch/150/penalties').expect(503);
+
+      historyDB.enabled = true;
+    });
+  });
+
+  describe('GET /api/epoch/:epoch/penalties/summary', () => {
+    it('should return penalties summary', async () => {
+      const mockSummary = {
+        epoch: 150,
+        totalPenalties: 100,
+        uniqueAddresses: 80,
+        totalAmount: '5000.0',
+        byReason: {
+          bad_flip: { count: 60, total: '3000.0' },
+          missed_validation: { count: 40, total: '2000.0' },
+        },
+      };
+      mockDbGetEpochPenaltySummary.mockReturnValue(mockSummary);
+
+      const response = await request(app).get('/api/epoch/150/penalties/summary').expect(200);
+
+      expect(response.body.result.totalPenalties).toBe(100);
+      expect(response.body.result.byReason.bad_flip.count).toBe(60);
+    });
+
+    it('should return 400 for invalid epoch', async () => {
+      const response = await request(app).get('/api/epoch/invalid/penalties/summary').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 404 when no penalty data exists', async () => {
+      mockDbGetEpochPenaltySummary.mockReturnValue(null);
+
+      const response = await request(app).get('/api/epoch/999/penalties/summary').expect(404);
+
+      expect(response.body.error.message).toContain('No penalty data');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app).get('/api/epoch/150/penalties/summary').expect(503);
 
       historyDB.enabled = true;
     });
