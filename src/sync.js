@@ -266,3 +266,4 @@ class SyncService {
 const syncService = new SyncService();
 
 module.exports = syncService;
+module.exports.SyncService = SyncService;

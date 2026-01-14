@@ -382,3 +382,4 @@ class HistoryDB {
 const historyDB = new HistoryDB();
 
 module.exports = historyDB;
+module.exports.HistoryDB = HistoryDB;

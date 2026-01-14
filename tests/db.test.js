@@ -1,0 +1,337 @@
+/**
+ * Tests for SQLite Database Layer (db.js)
+ */
+
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+
+// Use a temporary database for tests
+const testDbPath = path.join(os.tmpdir(), `idena-test-${Date.now()}.db`);
+
+// Set environment before requiring db module
+process.env.SQLITE_PATH = testDbPath;
+process.env.HISTORY_ENABLED = 'true';
+
+// Create a fresh instance for testing
+const Database = require('better-sqlite3');
+const { HistoryDB } = require('../src/db');
+
+describe('HistoryDB', () => {
+  let db;
+
+  beforeEach(() => {
+    // Create fresh instance for each test
+    const tempPath = path.join(os.tmpdir(), `idena-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    db = new (require('../src/db').constructor)(tempPath);
+    db.enabled = true;
+    db.init();
+  });
+
+  afterEach(() => {
+    if (db) {
+      db.close();
+    }
+  });
+
+  describe('init()', () => {
+    it('should initialize database and create schema', () => {
+      expect(db.db).not.toBeNull();
+      expect(db.enabled).toBe(true);
+    });
+
+    it('should create blocks table', () => {
+      const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'").get();
+      expect(tables).toBeDefined();
+      expect(tables.name).toBe('blocks');
+    });
+
+    it('should create transactions table', () => {
+      const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'").get();
+      expect(tables).toBeDefined();
+      expect(tables.name).toBe('transactions');
+    });
+
+    it('should create sync_status table with initial row', () => {
+      const status = db.db.prepare('SELECT * FROM sync_status WHERE id = 1').get();
+      expect(status).toBeDefined();
+      expect(status.last_synced_block).toBe(0);
+    });
+
+    it('should not initialize when disabled', () => {
+      const disabledDb = new (require('../src/db').constructor)();
+      disabledDb.enabled = false;
+      disabledDb.init();
+      expect(disabledDb.db).toBeNull();
+    });
+  });
+
+  describe('insertBlock()', () => {
+    it('should insert a block', () => {
+      const block = {
+        height: 1000,
+        hash: '0xabc123',
+        timestamp: 1704067200,
+        epoch: 150,
+        proposer: '0xproposer',
+        txCount: 5,
+      };
+
+      db.insertBlock(block);
+
+      const result = db.db.prepare('SELECT * FROM blocks WHERE height = ?').get(1000);
+      expect(result.height).toBe(1000);
+      expect(result.hash).toBe('0xabc123');
+      expect(result.epoch).toBe(150);
+      expect(result.tx_count).toBe(5);
+    });
+
+    it('should replace block on conflict', () => {
+      const block1 = { height: 1000, hash: '0xfirst', timestamp: 1000, epoch: 1 };
+      const block2 = { height: 1000, hash: '0xsecond', timestamp: 2000, epoch: 2 };
+
+      db.insertBlock(block1);
+      db.insertBlock(block2);
+
+      const result = db.db.prepare('SELECT * FROM blocks WHERE height = ?').get(1000);
+      expect(result.hash).toBe('0xsecond');
+    });
+  });
+
+  describe('insertTransaction()', () => {
+    it('should insert a transaction', () => {
+      // First insert a block (foreign key)
+      db.insertBlock({ height: 1000, hash: '0xblock', timestamp: 1000, epoch: 1 });
+
+      const tx = {
+        hash: '0xtx123',
+        blockHeight: 1000,
+        txIndex: 0,
+        type: 'send',
+        from: '0xsender',
+        to: '0xrecipient',
+        amount: '100.5',
+        fee: '0.01',
+        nonce: 42,
+        timestamp: 1704067200,
+      };
+
+      db.insertTransaction(tx);
+
+      const result = db.db.prepare('SELECT * FROM transactions WHERE hash = ?').get('0xtx123');
+      expect(result.hash).toBe('0xtx123');
+      expect(result.type).toBe('send');
+      expect(result.from_addr).toBe('0xsender');
+      expect(result.amount).toBe('100.5');
+    });
+  });
+
+  describe('insertBatch()', () => {
+    it('should insert multiple blocks and transactions', () => {
+      const blocks = [
+        { height: 1000, hash: '0xblock1', timestamp: 1000, epoch: 1, txCount: 1 },
+        { height: 1001, hash: '0xblock2', timestamp: 1001, epoch: 1, txCount: 2 },
+      ];
+
+      const transactions = [
+        { hash: '0xtx1', blockHeight: 1000, type: 'send', from: '0xa', to: '0xb', timestamp: 1000 },
+        { hash: '0xtx2', blockHeight: 1001, type: 'send', from: '0xc', to: '0xd', timestamp: 1001 },
+        { hash: '0xtx3', blockHeight: 1001, type: 'send', from: '0xe', to: '0xf', timestamp: 1001 },
+      ];
+
+      db.insertBatch(blocks, transactions);
+
+      const blockCount = db.db.prepare('SELECT COUNT(*) as count FROM blocks').get().count;
+      const txCount = db.db.prepare('SELECT COUNT(*) as count FROM transactions').get().count;
+
+      expect(blockCount).toBe(2);
+      expect(txCount).toBe(3);
+    });
+  });
+
+  describe('getBlock()', () => {
+    it('should return block by height', () => {
+      db.insertBlock({ height: 5000, hash: '0xhash', timestamp: 1000, epoch: 100, proposer: '0xp', txCount: 3 });
+
+      const block = db.getBlock(5000);
+      expect(block).not.toBeNull();
+      expect(block.height).toBe(5000);
+      expect(block.hash).toBe('0xhash');
+      expect(block.txCount).toBe(3);
+    });
+
+    it('should return null for non-existent block', () => {
+      const block = db.getBlock(999999);
+      expect(block).toBeNull();
+    });
+  });
+
+  describe('getTransaction()', () => {
+    it('should return transaction by hash', () => {
+      db.insertBlock({ height: 1000, hash: '0xblock', timestamp: 1000, epoch: 1 });
+      db.insertTransaction({
+        hash: '0xtxhash',
+        blockHeight: 1000,
+        type: 'send',
+        from: '0xfrom',
+        to: '0xto',
+        amount: '50',
+        fee: '0.1',
+        nonce: 5,
+        timestamp: 1000,
+      });
+
+      const tx = db.getTransaction('0xtxhash');
+      expect(tx).not.toBeNull();
+      expect(tx.hash).toBe('0xtxhash');
+      expect(tx.type).toBe('send');
+      expect(tx.epoch).toBe(1);
+    });
+
+    it('should return null for non-existent transaction', () => {
+      const tx = db.getTransaction('0xnonexistent');
+      expect(tx).toBeNull();
+    });
+  });
+
+  describe('getAddressTransactions()', () => {
+    beforeEach(() => {
+      // Setup test data
+      db.insertBlock({ height: 1000, hash: '0xb1', timestamp: 1000, epoch: 1 });
+      db.insertBlock({ height: 1001, hash: '0xb2', timestamp: 1001, epoch: 1 });
+      db.insertBlock({ height: 1002, hash: '0xb3', timestamp: 1002, epoch: 1 });
+
+      db.insertTransaction({ hash: '0xt1', blockHeight: 1000, type: 'send', from: '0xAlice', to: '0xBob', timestamp: 1000 });
+      db.insertTransaction({ hash: '0xt2', blockHeight: 1001, type: 'send', from: '0xBob', to: '0xAlice', timestamp: 1001 });
+      db.insertTransaction({ hash: '0xt3', blockHeight: 1002, type: 'stake', from: '0xAlice', to: null, timestamp: 1002 });
+    });
+
+    it('should return transactions for address (case-insensitive)', () => {
+      const result = db.getAddressTransactions('0xalice');
+      expect(result.data.length).toBe(3);
+      expect(result.total).toBe(3);
+    });
+
+    it('should support pagination with limit and offset', () => {
+      const page1 = db.getAddressTransactions('0xAlice', { limit: 2, offset: 0 });
+      expect(page1.data.length).toBe(2);
+      expect(page1.hasMore).toBe(true);
+
+      const page2 = db.getAddressTransactions('0xAlice', { limit: 2, offset: 2 });
+      expect(page2.data.length).toBe(1);
+      expect(page2.hasMore).toBe(false);
+    });
+
+    it('should filter by transaction type', () => {
+      const result = db.getAddressTransactions('0xAlice', { type: 'stake' });
+      expect(result.data.length).toBe(1);
+      expect(result.data[0].type).toBe('stake');
+    });
+
+    it('should return empty for address with no transactions', () => {
+      const result = db.getAddressTransactions('0xUnknown');
+      expect(result.data.length).toBe(0);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getSyncStatus()', () => {
+    it('should return initial sync status', () => {
+      const status = db.getSyncStatus();
+      expect(status.lastSyncedBlock).toBe(0);
+      expect(status.isSyncing).toBe(false);
+    });
+  });
+
+  describe('updateSyncStatus()', () => {
+    it('should update last synced block', () => {
+      db.updateSyncStatus(5000);
+      const status = db.getSyncStatus();
+      expect(status.lastSyncedBlock).toBe(5000);
+    });
+
+    it('should update highest known block', () => {
+      db.updateSyncStatus(5000, 10000);
+      const status = db.getSyncStatus();
+      expect(status.highestKnownBlock).toBe(10000);
+    });
+
+    it('should update syncing state', () => {
+      db.updateSyncStatus(5000, 10000, true);
+      const status = db.getSyncStatus();
+      expect(status.isSyncing).toBe(true);
+    });
+
+    it('should calculate progress', () => {
+      db.setSyncStartBlock(1000);
+      db.updateSyncStatus(5500, 10000);
+      const status = db.getSyncStatus();
+      expect(parseFloat(status.progress)).toBeCloseTo(50, 0);
+    });
+  });
+
+  describe('setSyncStartBlock()', () => {
+    it('should set sync start block', () => {
+      db.setSyncStartBlock(5000000);
+      const status = db.getSyncStatus();
+      expect(status.syncStartBlock).toBe(5000000);
+    });
+  });
+
+  describe('getStats()', () => {
+    it('should return database statistics', () => {
+      db.insertBlock({ height: 1000, hash: '0xb1', timestamp: 1000, epoch: 1 });
+      db.insertBlock({ height: 1001, hash: '0xb2', timestamp: 1001, epoch: 1 });
+      db.insertTransaction({ hash: '0xt1', blockHeight: 1000, type: 'send', from: '0xa', to: '0xb', timestamp: 1000 });
+
+      const stats = db.getStats();
+      expect(stats.enabled).toBe(true);
+      expect(stats.blockCount).toBe(2);
+      expect(stats.txCount).toBe(1);
+      expect(stats.blockRange.min).toBe(1000);
+      expect(stats.blockRange.max).toBe(1001);
+    });
+
+    it('should return disabled stats when db is disabled', () => {
+      db.enabled = false;
+      const stats = db.getStats();
+      expect(stats.enabled).toBe(false);
+    });
+  });
+
+  describe('close()', () => {
+    it('should close database connection', () => {
+      db.close();
+      expect(db.db).toBeNull();
+    });
+  });
+
+  describe('disabled database', () => {
+    let disabledDb;
+
+    beforeEach(() => {
+      disabledDb = new (require('../src/db').constructor)();
+      disabledDb.enabled = false;
+    });
+
+    it('should return null from getSyncStatus when disabled', () => {
+      expect(disabledDb.getSyncStatus()).toBeNull();
+    });
+
+    it('should return null from getBlock when disabled', () => {
+      expect(disabledDb.getBlock(1000)).toBeNull();
+    });
+
+    it('should return null from getTransaction when disabled', () => {
+      expect(disabledDb.getTransaction('0xhash')).toBeNull();
+    });
+
+    it('should return error from getAddressTransactions when disabled', () => {
+      const result = disabledDb.getAddressTransactions('0xaddr');
+      expect(result.error).toBeDefined();
+    });
+  });
+});
+
+// Export the HistoryDB class for testing
+module.exports = { HistoryDB: require('../src/db').constructor };
