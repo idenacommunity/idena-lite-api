@@ -1,6 +1,6 @@
 {
   "name": "idena-lite-api",
-  "version": "0.2.0-beta",
+  "version": "0.2.1-beta",
   "description": "Idena API with real-time queries and optional historical data sync",
   "main": "src/server.js",
   "scripts": {
