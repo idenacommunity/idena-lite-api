@@ -6,21 +6,15 @@ RUN apk add --no-cache dumb-init
 # Create app directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and install
 COPY package*.json ./
-
-# Install production dependencies only
 RUN npm ci --omit=dev
 
 # Copy application code
 COPY src ./src
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
-
-USER nodejs
+# Create data directory
+RUN mkdir -p /app/data
 
 # Expose port
 EXPOSE 3000
