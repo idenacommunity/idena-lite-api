@@ -1,7 +1,7 @@
 {
   "name": "idena-lite-api",
   "version": "0.1.0-beta",
-  "description": "Community-maintained lightweight Idena API",
+  "description": "Current-state API for Idena - real-time identity, balance, and epoch queries",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

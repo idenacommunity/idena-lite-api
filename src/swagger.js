@@ -5,9 +5,9 @@ const options = {
     openapi: '3.0.0',
     info: {
       title: 'Idena Lite API',
-      version: '0.1.0-alpha',
+      version: '0.1.0-beta',
       description:
-        'Community-maintained lightweight REST API for the Idena blockchain. Provides cached access to identity, epoch, and stake data.',
+        'Current-state API for Idena blockchain. Provides real-time identity, balance, and epoch data via RPC node queries. Note: This API does NOT support historical queries or transaction history - use idena-indexer-api for those features.',
       license: {
         name: 'MIT',
         url: 'https://opensource.org/licenses/MIT',

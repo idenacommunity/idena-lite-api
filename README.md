@@ -12,7 +12,9 @@
 
 **Community-maintained lightweight API for the Idena blockchain**
 
-A lightweight alternative to `api.idena.io` built by the Idena community.
+A **current-state** API for Idena - query real-time identity, balance, and epoch data without running a full indexer.
+
+> ⚠️ **Scope**: This API provides **current state only** (real-time data). For historical queries, transaction history, or analytics, use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api).
 
 ---
 
@@ -46,12 +48,33 @@ A lightweight alternative to `api.idena.io` built by the Idena community.
 
 ## 🎯 Purpose
 
-Replace the centralized `api.idena.io` with decentralized, community-owned infrastructure that:
-- ✅ Provides fast, cached responses
+A **stateless caching proxy** for Idena RPC nodes, designed for:
+- ✅ Identity verification (login gates, access control)
+- ✅ Current balance/stake checks
+- ✅ Epoch and validation ceremony info
+- ✅ Simple integrations (wallets, whitelisting)
+
+**Key characteristics:**
+- ✅ Deploys in minutes (no blockchain sync required)
 - ✅ Works with any Idena RPC node
-- ✅ Deploys in minutes with Docker
-- ✅ Scales horizontally
-- ✅ Has minimal dependencies
+- ✅ Stateless - no database needed
+- ✅ Fast cached responses via Redis
+- ✅ Horizontally scalable
+
+## ⚠️ Limitations
+
+This API queries the **current state** from an Idena node. It **cannot** provide:
+
+| Feature | idena-lite-api | idena-indexer-api |
+|---------|----------------|-------------------|
+| Current identity/balance | ✅ Yes | ✅ Yes |
+| Transaction history | ❌ No | ✅ Yes |
+| Historical identity states | ❌ No | ✅ Yes |
+| Past epoch data | ❌ No | ✅ Yes |
+| Full-text search | ❌ No | ✅ Yes |
+| Analytics/aggregations | ❌ No | ✅ Yes |
+
+**Need historical data?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api) (requires PostgreSQL and 100+ hours initial sync).
 
 ## 🚀 Quick Start
 
