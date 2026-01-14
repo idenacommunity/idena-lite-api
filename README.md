@@ -96,7 +96,9 @@ A **lightweight API** for Idena with two operation modes:
 | **Deployment time** | Minutes | 2-4 hours | 100+ hours |
 | **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
 | **Sync speed** | N/A | ~12,000 blocks/min | ~1,000 blocks/min |
-| **Response time** | ~25ms | ~25ms | ~190ms |
+| **Response time*** | ~25ms | ~25ms | ~190ms |
+
+*\*Response times are preliminary benchmarks. Fair comparison requires both APIs querying the same data source.*
 
 ## ⚠️ Limitations
 
