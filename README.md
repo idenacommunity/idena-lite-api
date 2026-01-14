@@ -173,18 +173,12 @@ Access the documentation at `http://localhost:3000/api/docs` when running locall
 
 **Option 1: Run Your Own Node (Recommended)**
 
-```bash
-# Using Docker
-docker run -d -p 9009:9009 idena/idena-go
-
-# Then configure
-IDENA_RPC_URL=http://localhost:9009
-```
-
 Running your own node provides:
 - Full control and reliability
 - No rate limiting or Cloudflare blocks
 - Access to all RPC methods
+
+See [Idena Node Setup Guide](#-idena-node-setup-guide) below for detailed instructions.
 
 **Option 2: Private RPC Access**
 
@@ -203,6 +197,168 @@ Public community RPC nodes (e.g., `rpc.holismo.org`, `rpc.idio.network`) often h
 - Specific client configurations
 
 If you encounter 405 errors, you'll need to run your own node or obtain private RPC access.
+
+## 🖥️ Idena Node Setup Guide
+
+### Prerequisites
+
+- **Disk space:** 50-100GB free
+- **Memory:** 4GB+ RAM recommended
+- **Docker:** Installed and running
+
+### Quick Setup (Docker)
+
+```bash
+# 1. Create node directory
+mkdir -p ~/idena-node/datadir
+cd ~/idena-node
+
+# 2. Create docker-compose.yml
+cat > docker-compose.yml << 'EOF'
+services:
+  idena-node:
+    image: rinzlerfr/idena-node:latest
+    container_name: idena-node
+    restart: unless-stopped
+    ports:
+      - "9009:9009"   # RPC port
+      - "40405:40405" # P2P port
+    volumes:
+      - ./datadir:/datadir
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+EOF
+
+# 3. Start the node
+docker compose up -d
+
+# 4. Wait for initialization (2-5 minutes for first start)
+docker logs -f idena-node
+```
+
+### Enable External RPC Access
+
+After the node starts, update the config to allow external RPC connections:
+
+```bash
+# Update config inside container
+docker exec idena-node bash -c 'cat > /datadir/config.json << EOF
+{
+  "IpfsConf": {
+    "Profile": "server"
+  },
+  "RPC": {
+    "HTTPHost": "0.0.0.0",
+    "HTTPPort": 9009
+  }
+}
+EOF'
+
+# Restart to apply config
+docker compose restart
+```
+
+### Get API Key
+
+The node generates an API key on first start:
+
+```bash
+# Get your API key
+docker exec idena-node cat /datadir/api.key
+```
+
+Save this key - you'll need it for the `.env` file.
+
+### Configure idena-lite-api
+
+```bash
+# In your idena-lite-api directory
+cat > .env << EOF
+PORT=3000
+IDENA_RPC_URL=http://localhost:9009
+IDENA_API_KEY=your-api-key-here
+REDIS_URL=redis://localhost:6379
+REDIS_ENABLED=true
+CACHE_TTL=300
+EOF
+```
+
+### Sync Time Estimates
+
+| Sync Type | Time | Notes |
+|-----------|------|-------|
+| Fast sync (snapshot) | 6-12 hours | Default mode |
+| Full sync | 100+ hours | Complete verification |
+
+The node uses fast sync by default, starting from a snapshot at ~50% blockchain height.
+
+### Monitor Sync Progress
+
+```bash
+# Check current sync status
+docker exec idena-node curl -s http://localhost:9009 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"bcn_syncing","params":[],"id":1,"key":"YOUR_API_KEY"}'
+
+# Watch sync logs
+docker logs -f idena-node | grep -i "sync\|block"
+
+# Check current epoch
+docker exec idena-node curl -s http://localhost:9009 \
+  -X POST -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"dna_epoch","params":[],"id":1,"key":"YOUR_API_KEY"}'
+```
+
+### Blockchain Statistics (January 2026)
+
+| Metric | Value |
+|--------|-------|
+| Current block height | ~10.2M |
+| Current epoch | ~180 |
+| Sync speed | ~100-500 blocks/sec |
+
+### Troubleshooting
+
+**Node won't start:**
+```bash
+# Check logs for errors
+docker logs idena-node --tail 50
+
+# Restart with fresh data (warning: re-syncs from scratch)
+docker compose down
+rm -rf datadir/*
+docker compose up -d
+```
+
+**RPC connection refused:**
+```bash
+# Verify node is running
+docker ps | grep idena
+
+# Check RPC is listening
+docker exec idena-node netstat -tlnp | grep 9009
+```
+
+**API key invalid:**
+```bash
+# Regenerate by deleting and restarting
+docker exec idena-node rm /datadir/api.key
+docker compose restart
+docker exec idena-node cat /datadir/api.key
+```
+
+### Alternative Docker Images
+
+| Image | Description |
+|-------|-------------|
+| `rinzlerfr/idena-node` | Full-featured, auto-updates |
+| `idenadev/idena` | Official image with PM2 |
+| `cloudpodznet/idena-docker` | Minimal VPS setup |
+
+Sources: [xludx/docker-idena](https://github.com/xludx/docker-idena), [Rinzler78/docker.idena-node](https://github.com/Rinzler78/docker.idena-node)
 
 ## 🏗️ Production Deployment
 
