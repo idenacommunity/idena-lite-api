@@ -28,6 +28,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Background sync to SQLite database
 - Transaction history per address
 - Historical block/transaction lookup
+- Epoch & identity state tracking
+- Rewards & validation data
+- Full-text search (FTS5)
+- Smart contract tracking
 - ~2-4 hours initial sync (vs 100+ hours for full indexer)
 
 ## What idena-lite-api CAN Do
@@ -46,15 +50,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Get historical blocks (`/api/history/block/:height`)
 - ✅ Get historical transactions (`/api/history/transaction/:hash`)
 - ✅ Check sync status (`/api/history/status`)
+- ✅ Epoch data and identity states (`/api/epoch/:epoch`, `/api/history/identity/:addr/epochs`)
+- ✅ Rewards and validation results (`/api/history/identity/:addr/rewards`)
+- ✅ Balance change history (`/api/address/:addr/balance/changes`)
+- ✅ Invite tracking (`/api/history/identity/:addr/invites`)
+- ✅ Network statistics (`/api/stats/online`, `/api/stats/coins`)
+- ✅ Full-text search (`/api/search?q=...`, `/api/search/addresses`, `/api/search/transactions`)
+- ✅ Smart contract queries (`/api/contract`, `/api/contract/:addr`, `/api/contract/:addr/calls`)
 
 ## What idena-lite-api CANNOT Do
 
-- ❌ Historical identity states (was this address Human in epoch 150?)
-- ❌ Historical epoch data (what were the rewards in epoch 100?)
-- ❌ Full-text search across blockchain data
-- ❌ Analytics and aggregations (total staked, identity counts over time)
-- ❌ Smart contract state queries
-- ❌ Flip content retrieval
+- ❌ Flip content retrieval (IPFS images and answers)
+- ❌ Complex analytics (advanced aggregations and trends)
 
 **Need these features?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api) (requires PostgreSQL, 100+ hours sync).
 
@@ -103,9 +110,13 @@ src/
     ├── balance.js   # /api/balance/:address
     ├── transaction.js # /api/transaction/:hash
     ├── block.js     # /api/block/:heightOrHash
-    ├── epoch.js     # /api/epoch/current, /api/epoch/intervals
+    ├── epoch.js     # /api/epoch/current, /api/epoch/:epoch, /api/epochs
     ├── health.js    # /api/health, /api/ping
-    └── history.js   # /api/history/* (historical queries)
+    ├── history.js   # /api/history/* (historical queries)
+    ├── address.js   # /api/address/:addr (balance changes, penalties)
+    ├── stats.js     # /api/stats/* (network statistics)
+    ├── search.js    # /api/search/* (full-text search)
+    └── contract.js  # /api/contract/* (smart contracts)
 
 data/
 └── history.db       # SQLite database (created automatically)
@@ -192,7 +203,29 @@ getAddressTransactions(addr, opts) // Paginated tx history
 getBlock(height)                 // Get block by height
 getTransaction(hash)             // Get tx by hash
 insertBatch(blocks, txs)         // Batch insert
-getStats()                       // Block/tx counts
+getStats()                       // Block/tx/contract counts
+
+// Epoch & Identity
+getEpoch(epoch)                  // Get epoch details
+getEpochs(opts)                  // List epochs (paginated)
+getIdentityStates(addr, opts)    // Identity state history
+getIdentityStateAtEpoch(addr, epoch) // State at specific epoch
+
+// Rewards & Validation
+getRewards(addr, opts)           // Reward history
+getValidationResults(addr, opts) // Validation ceremony results
+
+// Search (FTS5)
+search(query, opts)              // Search all types
+searchAddresses(prefix)          // Search addresses by prefix
+searchTransactions(prefix)       // Search tx by hash prefix
+searchBlocks(query)              // Search blocks by height/hash
+
+// Contracts
+getContract(addr)                // Get contract details
+getContracts(opts)               // List contracts (paginated)
+getContractCalls(addr, opts)     // Contract call history
+getContractStats()               // Contract statistics
 ```
 
 ### SyncService (`src/sync.js`)
@@ -243,10 +276,10 @@ cache.generateKey('prefix', ...parts)
 ## Testing
 
 ```bash
-# Run all tests (215 tests)
+# Run all tests (466 tests)
 npm test
 
-# Run with coverage (96%+)
+# Run with coverage (97%+)
 npm run test:coverage
 
 # Run specific test file
@@ -267,8 +300,12 @@ npm test -- --testNamePattern="should return identity"
 - `balance.test.js` - Balance endpoints
 - `transaction.test.js` - Transaction endpoints
 - `block.test.js` - Block endpoints
-- `epoch.test.js` - Epoch endpoints
+- `epoch.test.js` - Epoch endpoints (+ historical epochs)
 - `history.test.js` - Historical endpoints
+- `address.test.js` - Address endpoints (balance changes, penalties)
+- `stats.test.js` - Network statistics endpoints
+- `search.test.js` - Full-text search endpoints
+- `contract.test.js` - Smart contract endpoints
 - `db.test.js` - HistoryDB unit tests
 - `sync.test.js` - SyncService unit tests
 - `rateLimit.test.js` - Rate limiting
@@ -280,10 +317,15 @@ npm test -- --testNamePattern="should return identity"
 |---------|----------------|--------------------------|-------------------|
 | Current identity/balance | ✅ | ✅ | ✅ |
 | Transaction history | ❌ | ✅ | ✅ |
-| Historical identity states | ❌ | ❌ | ✅ |
-| Past epoch data | ❌ | ❌ | ✅ |
-| Full-text search | ❌ | ❌ | ✅ |
-| Analytics/aggregations | ❌ | ❌ | ✅ |
+| Historical identity states | ❌ | ✅ | ✅ |
+| Past epoch data | ❌ | ✅ | ✅ |
+| Rewards & validation | ❌ | ✅ | ✅ |
+| Balance change history | ❌ | ✅ | ✅ |
+| Invite tracking | ❌ | ✅ | ✅ |
+| Network statistics | ❌ | ✅ | ✅ |
+| Full-text search | ❌ | ✅ | ✅ |
+| Smart contract queries | ❌ | ✅ | ✅ |
+| Flip content | ❌ | ❌ | ✅ |
 | **Deployment time** | Minutes | 2-4 hours | 100+ hours |
 | **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
 | **Sync speed** | N/A | ~12,000 blocks/min | ~1,000 blocks/min |
