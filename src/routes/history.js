@@ -293,4 +293,297 @@ router.get('/block/:height', (req, res) => {
   res.json({ result: block });
 });
 
+// ==========================================
+// Identity State History Endpoints
+// ==========================================
+
+/**
+ * Helper to validate address format
+ */
+function validateAddress(address) {
+  return address && address.match(/^0x[a-fA-F0-9]{40}$/);
+}
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/epochs:
+ *   get:
+ *     summary: Get identity history across epochs
+ *     description: Returns the state of an identity across all synced epochs
+ *     tags: [Identity History]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Identity history across epochs
+ *       400:
+ *         description: Invalid address format
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/epochs', (req, res) => {
+  const { address } = req.params;
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+
+  const result = historyDB.getIdentityEpochs(address, { limit, offset });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/state/{epoch}:
+ *   get:
+ *     summary: Get identity state at specific epoch
+ *     description: Returns the state of an identity at a specific epoch
+ *     tags: [Identity History]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Identity state at the specified epoch
+ *       400:
+ *         description: Invalid address or epoch
+ *       404:
+ *         description: Identity state not found for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/state/:epoch', (req, res) => {
+  const { address } = req.params;
+  const epochNum = parseInt(req.params.epoch);
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const state = historyDB.getIdentityState(address, epochNum);
+
+  if (!state) {
+    return res.status(404).json({
+      error: {
+        message: `Identity state not found for ${address} at epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: state });
+});
+
+// ==========================================
+// Address State History Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/history/address/{address}/states:
+ *   get:
+ *     summary: Get address balance history across epochs
+ *     description: Returns balance and stake snapshots for an address across epochs
+ *     tags: [Address History]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Address state history
+ *       400:
+ *         description: Invalid address format
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/address/:address/states', (req, res) => {
+  const { address } = req.params;
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+
+  const result = historyDB.getAddressStates(address, { limit, offset });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/address/{address}/state/{epoch}:
+ *   get:
+ *     summary: Get address state at specific epoch
+ *     description: Returns balance and stake snapshot for an address at a specific epoch
+ *     tags: [Address History]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Address state at the specified epoch
+ *       400:
+ *         description: Invalid address or epoch
+ *       404:
+ *         description: Address state not found for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/address/:address/state/:epoch', (req, res) => {
+  const { address } = req.params;
+  const epochNum = parseInt(req.params.epoch);
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const state = historyDB.getAddressState(address, epochNum);
+
+  if (!state) {
+    return res.status(404).json({
+      error: {
+        message: `Address state not found for ${address} at epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: state });
+});
+
 module.exports = router;

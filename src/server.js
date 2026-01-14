@@ -42,6 +42,7 @@ app.get('/api/docs.json', (req, res) => {
 app.use('/api', healthRoutes);
 app.use('/api/identity', identityRoutes);
 app.use('/api/epoch', epochRoutes);
+app.use('/api/epochs', epochRoutes); // Mount epochs router at /api/epochs for list endpoint
 app.use('/api/balance', balanceRoutes);
 app.use('/api/transaction', transactionRoutes);
 app.use('/api/block', blockRoutes);

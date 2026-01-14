@@ -3,6 +3,7 @@
  *
  * Syncs blockchain data from RPC node to SQLite database.
  * Runs in the background, processing blocks in batches.
+ * Detects epoch boundaries and snapshots identity states.
  */
 
 const IdenaRPC = require('./rpc');
@@ -17,6 +18,8 @@ class SyncService {
     this.syncInterval = parseInt(process.env.SYNC_INTERVAL) || 1000; // ms between batches
     this.concurrency = parseInt(process.env.SYNC_CONCURRENCY) || 20; // parallel requests
     this.enabled = process.env.HISTORY_ENABLED !== 'false';
+    this.lastSeenEpoch = null; // Track epoch for boundary detection
+    this.epochSnapshotEnabled = process.env.EPOCH_SNAPSHOT_ENABLED !== 'false';
   }
 
   /**
@@ -170,8 +173,183 @@ class SyncService {
     // Batch insert to database
     if (blocks.length > 0) {
       historyDB.insertBatch(blocks, transactions);
+
+      // Detect epoch boundaries and handle them
+      await this._detectEpochBoundaries(blocks);
+
       historyDB.updateSyncStatus(endBlock, currentHeight, true);
       console.log(`Synced ${blocks.length} blocks, ${transactions.length} transactions`);
+    }
+  }
+
+  /**
+   * Detect epoch boundaries in a batch of blocks
+   */
+  async _detectEpochBoundaries(blocks) {
+    if (!blocks.length) return;
+
+    // Sort blocks by height to process in order
+    const sortedBlocks = [...blocks].sort((a, b) => a.height - b.height);
+
+    // Initialize lastSeenEpoch from database if not set
+    if (this.lastSeenEpoch === null) {
+      const lastEpoch = historyDB.getLastEpoch();
+      this.lastSeenEpoch = lastEpoch ? lastEpoch.epoch : null;
+    }
+
+    for (const block of sortedBlocks) {
+      const currentEpoch = block.epoch;
+
+      // First block we've seen - initialize epoch
+      if (this.lastSeenEpoch === null) {
+        await this._createEpoch(currentEpoch, block);
+        this.lastSeenEpoch = currentEpoch;
+        continue;
+      }
+
+      // Epoch changed - handle boundary
+      if (currentEpoch !== this.lastSeenEpoch) {
+        // Close the previous epoch
+        const prevBlock = sortedBlocks.find(b => b.epoch === this.lastSeenEpoch && b.height < block.height);
+        if (prevBlock) {
+          await this._closeEpoch(this.lastSeenEpoch, prevBlock);
+        }
+
+        // Create new epoch
+        await this._createEpoch(currentEpoch, block);
+
+        // Snapshot identity states for the new epoch
+        if (this.epochSnapshotEnabled) {
+          await this._snapshotIdentityStates(currentEpoch, block);
+        }
+
+        console.log(`Epoch boundary detected: ${this.lastSeenEpoch} -> ${currentEpoch}`);
+        this.lastSeenEpoch = currentEpoch;
+      }
+    }
+  }
+
+  /**
+   * Create a new epoch record
+   */
+  async _createEpoch(epochNum, firstBlock) {
+    // Check if epoch already exists
+    const existing = historyDB.getEpoch(epochNum);
+    if (existing) return;
+
+    historyDB.insertEpoch({
+      epoch: epochNum,
+      startBlock: firstBlock.height,
+      startTimestamp: firstBlock.timestamp,
+      endBlock: null,
+      endTimestamp: null,
+    });
+
+    console.log(`Created epoch ${epochNum} starting at block ${firstBlock.height}`);
+  }
+
+  /**
+   * Close an epoch when a new one starts
+   */
+  async _closeEpoch(epochNum, lastBlock) {
+    // Calculate epoch statistics
+    const stats = this._calculateEpochStats(epochNum);
+
+    historyDB.closeEpoch(epochNum, lastBlock.height, lastBlock.timestamp, stats);
+    console.log(`Closed epoch ${epochNum} at block ${lastBlock.height}`);
+  }
+
+  /**
+   * Calculate statistics for an epoch
+   */
+  _calculateEpochStats(epochNum) {
+    // Count blocks and transactions in this epoch
+    const stats = historyDB.getStats();
+
+    // For now, return minimal stats - can be enhanced later
+    return {
+      blockCount: null, // Will be calculated from end_block - start_block
+      txCount: null,
+      validatedCount: null,
+      flipCount: null,
+      inviteCount: null,
+    };
+  }
+
+  /**
+   * Snapshot identity states at epoch boundary
+   */
+  async _snapshotIdentityStates(epochNum, block) {
+    try {
+      // Fetch all identities from RPC
+      const identities = await this.rpc.call('dna_identities', []);
+
+      if (!identities || !Array.isArray(identities)) {
+        console.log('No identities returned from RPC, skipping snapshot');
+        return;
+      }
+
+      // Transform to identity state records
+      const identityStates = identities
+        .filter(id => id && id.address && id.state)
+        .map(id => ({
+          address: id.address,
+          epoch: epochNum,
+          state: id.state,
+          prevState: null, // Could be looked up from previous epoch
+          blockHeight: block.height,
+          timestamp: block.timestamp,
+        }));
+
+      if (identityStates.length > 0) {
+        historyDB.insertIdentityStatesBatch(identityStates);
+        console.log(`Snapshotted ${identityStates.length} identity states for epoch ${epochNum}`);
+      }
+
+      // Also snapshot address balances for identities
+      await this._snapshotAddressStates(epochNum, identities, block);
+    } catch (error) {
+      console.error(`Failed to snapshot identity states for epoch ${epochNum}:`, error.message);
+    }
+  }
+
+  /**
+   * Snapshot address balances at epoch boundary
+   */
+  async _snapshotAddressStates(epochNum, identities, block) {
+    try {
+      const addressStates = [];
+
+      // Fetch balances in batches
+      const addresses = identities.map(id => id.address).filter(Boolean);
+
+      for (let i = 0; i < addresses.length; i += this.concurrency) {
+        const batch = addresses.slice(i, i + this.concurrency);
+        const balancePromises = batch.map(async addr => {
+          try {
+            const balance = await this.rpc.call('dna_getBalance', [addr]);
+            return {
+              address: addr,
+              epoch: epochNum,
+              balance: balance?.balance || '0',
+              stake: balance?.stake || '0',
+              txCount: 0, // Could be calculated from transactions table
+            };
+          } catch {
+            return null;
+          }
+        });
+
+        const results = await Promise.all(balancePromises);
+        addressStates.push(...results.filter(Boolean));
+      }
+
+      if (addressStates.length > 0) {
+        historyDB.insertAddressStatesBatch(addressStates);
+        console.log(`Snapshotted ${addressStates.length} address states for epoch ${epochNum}`);
+      }
+    } catch (error) {
+      console.error(`Failed to snapshot address states for epoch ${epochNum}:`, error.message);
     }
   }
 

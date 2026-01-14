@@ -4,6 +4,10 @@ const mockGetAddressTransactions = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransaction = jest.fn();
 const mockGetStats = jest.fn();
+const mockGetIdentityEpochs = jest.fn();
+const mockGetIdentityState = jest.fn();
+const mockGetAddressStates = jest.fn();
+const mockGetAddressState = jest.fn();
 
 jest.mock('../src/db', () => ({
   enabled: true,
@@ -12,6 +16,10 @@ jest.mock('../src/db', () => ({
   getBlock: mockGetBlock,
   getTransaction: mockGetTransaction,
   getStats: mockGetStats,
+  getIdentityEpochs: mockGetIdentityEpochs,
+  getIdentityState: mockGetIdentityState,
+  getAddressStates: mockGetAddressStates,
+  getAddressState: mockGetAddressState,
   init: jest.fn(),
 }));
 
@@ -380,6 +388,261 @@ describe('History Routes', () => {
         .expect(503);
 
       expect(response.body.error.message).toContain('Historical database not enabled');
+    });
+  });
+
+  // ==========================================
+  // Identity State History Tests
+  // ==========================================
+
+  describe('GET /api/history/identity/:address/epochs', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return identity history across epochs', async () => {
+      const mockResult = {
+        data: [
+          { epoch: 150, state: 'Human', prevState: 'Verified', timestamp: 1704067200 },
+          { epoch: 149, state: 'Verified', prevState: 'Newbie', timestamp: 1703962600 },
+        ],
+        total: 50,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      };
+      mockGetIdentityEpochs.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/epochs`)
+        .expect(200);
+
+      expect(response.body.data.length).toBe(2);
+      expect(response.body.total).toBe(50);
+      expect(mockGetIdentityEpochs).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 50, offset: 0 })
+      );
+    });
+
+    it('should support pagination', async () => {
+      mockGetIdentityEpochs.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/epochs?limit=10&offset=20`)
+        .expect(200);
+
+      expect(mockGetIdentityEpochs).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 10, offset: 20 })
+      );
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/epochs')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/epochs`)
+        .expect(503);
+    });
+  });
+
+  describe('GET /api/history/identity/:address/state/:epoch', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return identity state at specific epoch', async () => {
+      const mockState = {
+        address: validAddress,
+        epoch: 150,
+        state: 'Human',
+        prevState: 'Verified',
+        blockHeight: 5000000,
+        timestamp: 1704067200,
+      };
+      mockGetIdentityState.mockReturnValue(mockState);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/state/150`)
+        .expect(200);
+
+      expect(response.body.result.state).toBe('Human');
+      expect(response.body.result.epoch).toBe(150);
+      expect(mockGetIdentityState).toHaveBeenCalledWith(validAddress, 150);
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/state/150')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 400 for invalid epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/state/abc`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/state/-1`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 404 when identity state not found', async () => {
+      mockGetIdentityState.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/state/999`)
+        .expect(404);
+
+      expect(response.body.error.message).toContain('Identity state not found');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/state/150`)
+        .expect(503);
+    });
+  });
+
+  // ==========================================
+  // Address State History Tests
+  // ==========================================
+
+  describe('GET /api/history/address/:address/states', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return address state history across epochs', async () => {
+      const mockResult = {
+        data: [
+          { epoch: 150, balance: '1000.5', stake: '500.25', txCount: 100 },
+          { epoch: 149, balance: '900.0', stake: '450.0', txCount: 95 },
+        ],
+        total: 50,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      };
+      mockGetAddressStates.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/address/${validAddress}/states`)
+        .expect(200);
+
+      expect(response.body.data.length).toBe(2);
+      expect(response.body.data[0].balance).toBe('1000.5');
+      expect(mockGetAddressStates).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 50, offset: 0 })
+      );
+    });
+
+    it('should support pagination', async () => {
+      mockGetAddressStates.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app)
+        .get(`/api/history/address/${validAddress}/states?limit=25&offset=50`)
+        .expect(200);
+
+      expect(mockGetAddressStates).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 25, offset: 50 })
+      );
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/address/invalid/states')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/address/${validAddress}/states`)
+        .expect(503);
+    });
+  });
+
+  describe('GET /api/history/address/:address/state/:epoch', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return address state at specific epoch', async () => {
+      const mockState = {
+        address: validAddress,
+        epoch: 150,
+        balance: '1000.5',
+        stake: '500.25',
+        txCount: 100,
+      };
+      mockGetAddressState.mockReturnValue(mockState);
+
+      const response = await request(app)
+        .get(`/api/history/address/${validAddress}/state/150`)
+        .expect(200);
+
+      expect(response.body.result.balance).toBe('1000.5');
+      expect(response.body.result.stake).toBe('500.25');
+      expect(mockGetAddressState).toHaveBeenCalledWith(validAddress, 150);
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/address/invalid/state/150')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 400 for invalid epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/address/${validAddress}/state/abc`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/address/${validAddress}/state/-1`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 404 when address state not found', async () => {
+      mockGetAddressState.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/api/history/address/${validAddress}/state/999`)
+        .expect(404);
+
+      expect(response.body.error.message).toContain('Address state not found');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/address/${validAddress}/state/150`)
+        .expect(503);
     });
   });
 });

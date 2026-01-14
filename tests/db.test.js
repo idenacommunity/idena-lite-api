@@ -331,6 +331,389 @@ describe('HistoryDB', () => {
       expect(result.error).toBeDefined();
     });
   });
+
+  // ==========================================
+  // Epoch Methods Tests
+  // ==========================================
+
+  describe('Epoch Methods', () => {
+    describe('insertEpoch()', () => {
+      it('should insert a new epoch', () => {
+        db.insertEpoch({
+          epoch: 150,
+          startBlock: 5000000,
+          startTimestamp: 1704067200,
+          endBlock: null,
+          endTimestamp: null,
+        });
+
+        const epoch = db.getEpoch(150);
+        expect(epoch).not.toBeNull();
+        expect(epoch.epoch).toBe(150);
+        expect(epoch.startBlock).toBe(5000000);
+      });
+
+      it('should replace epoch on conflict', () => {
+        db.insertEpoch({ epoch: 150, startBlock: 1000, startTimestamp: 1000 });
+        db.insertEpoch({ epoch: 150, startBlock: 2000, startTimestamp: 2000 });
+
+        const epoch = db.getEpoch(150);
+        expect(epoch.startBlock).toBe(2000);
+      });
+    });
+
+    describe('closeEpoch()', () => {
+      it('should update epoch end data', () => {
+        db.insertEpoch({ epoch: 150, startBlock: 5000000, startTimestamp: 1704067200 });
+        db.closeEpoch(150, 5100000, 1704167200, { validatedCount: 1000, blockCount: 100000 });
+
+        const epoch = db.getEpoch(150);
+        expect(epoch.endBlock).toBe(5100000);
+        expect(epoch.endTimestamp).toBe(1704167200);
+        expect(epoch.validatedCount).toBe(1000);
+      });
+    });
+
+    describe('getEpoch()', () => {
+      it('should return epoch by number', () => {
+        db.insertEpoch({ epoch: 150, startBlock: 5000000, startTimestamp: 1704067200 });
+
+        const epoch = db.getEpoch(150);
+        expect(epoch).not.toBeNull();
+        expect(epoch.epoch).toBe(150);
+      });
+
+      it('should return null for non-existent epoch', () => {
+        const epoch = db.getEpoch(999);
+        expect(epoch).toBeNull();
+      });
+    });
+
+    describe('getLastEpoch()', () => {
+      it('should return the most recent epoch', () => {
+        db.insertEpoch({ epoch: 148, startBlock: 4800000, startTimestamp: 1703900000 });
+        db.insertEpoch({ epoch: 149, startBlock: 4900000, startTimestamp: 1704000000 });
+        db.insertEpoch({ epoch: 150, startBlock: 5000000, startTimestamp: 1704100000 });
+
+        const epoch = db.getLastEpoch();
+        expect(epoch.epoch).toBe(150);
+      });
+
+      it('should return null when no epochs exist', () => {
+        const epoch = db.getLastEpoch();
+        expect(epoch).toBeNull();
+      });
+    });
+
+    describe('getEpochs()', () => {
+      beforeEach(() => {
+        for (let i = 145; i <= 150; i++) {
+          db.insertEpoch({ epoch: i, startBlock: 4500000 + (i - 145) * 100000, startTimestamp: 1700000000 + (i - 145) * 100000 });
+        }
+      });
+
+      it('should return paginated epochs', () => {
+        const result = db.getEpochs({ limit: 3, offset: 0 });
+        expect(result.data.length).toBe(3);
+        expect(result.total).toBe(6);
+        expect(result.hasMore).toBe(true);
+        expect(result.data[0].epoch).toBe(150); // Most recent first
+      });
+
+      it('should handle offset correctly', () => {
+        const result = db.getEpochs({ limit: 3, offset: 3 });
+        expect(result.data.length).toBe(3);
+        expect(result.hasMore).toBe(false);
+      });
+    });
+
+    describe('getEpochByBlock()', () => {
+      beforeEach(() => {
+        db.insertEpoch({ epoch: 149, startBlock: 4900000, startTimestamp: 1704000000, endBlock: 4999999, endTimestamp: 1704099999 });
+        db.insertEpoch({ epoch: 150, startBlock: 5000000, startTimestamp: 1704100000 });
+      });
+
+      it('should return epoch containing block height', () => {
+        const epoch = db.getEpochByBlock(4950000);
+        expect(epoch.epoch).toBe(149);
+      });
+
+      it('should return current epoch for blocks in open epoch', () => {
+        const epoch = db.getEpochByBlock(5050000);
+        expect(epoch.epoch).toBe(150);
+      });
+
+      it('should return null for blocks before first epoch', () => {
+        const epoch = db.getEpochByBlock(1000);
+        expect(epoch).toBeNull();
+      });
+    });
+  });
+
+  // ==========================================
+  // Identity State Methods Tests
+  // ==========================================
+
+  describe('Identity State Methods', () => {
+    const testAddress = '0x1234567890123456789012345678901234567890';
+
+    describe('insertIdentityState()', () => {
+      it('should insert an identity state', () => {
+        db.insertIdentityState({
+          address: testAddress,
+          epoch: 150,
+          state: 'Human',
+          prevState: 'Verified',
+          blockHeight: 5000000,
+          timestamp: 1704067200,
+        });
+
+        const state = db.getIdentityState(testAddress, 150);
+        expect(state).not.toBeNull();
+        expect(state.state).toBe('Human');
+        expect(state.prevState).toBe('Verified');
+      });
+    });
+
+    describe('insertIdentityStatesBatch()', () => {
+      it('should insert multiple identity states', () => {
+        const states = [
+          { address: '0xaddr1', epoch: 150, state: 'Human', timestamp: 1704067200 },
+          { address: '0xaddr2', epoch: 150, state: 'Verified', timestamp: 1704067200 },
+          { address: '0xaddr3', epoch: 150, state: 'Newbie', timestamp: 1704067200 },
+        ];
+
+        db.insertIdentityStatesBatch(states);
+
+        const count = db.db.prepare('SELECT COUNT(*) as count FROM identity_states').get().count;
+        expect(count).toBe(3);
+      });
+    });
+
+    describe('getIdentityState()', () => {
+      it('should return identity state for address at epoch', () => {
+        db.insertIdentityState({ address: testAddress, epoch: 150, state: 'Human', timestamp: 1704067200 });
+
+        const state = db.getIdentityState(testAddress, 150);
+        expect(state.state).toBe('Human');
+      });
+
+      it('should be case-insensitive for address', () => {
+        db.insertIdentityState({ address: testAddress.toUpperCase(), epoch: 150, state: 'Human', timestamp: 1704067200 });
+
+        const state = db.getIdentityState(testAddress.toLowerCase(), 150);
+        expect(state).not.toBeNull();
+      });
+
+      it('should return null for non-existent state', () => {
+        const state = db.getIdentityState(testAddress, 999);
+        expect(state).toBeNull();
+      });
+    });
+
+    describe('getIdentityEpochs()', () => {
+      beforeEach(() => {
+        for (let epoch = 145; epoch <= 150; epoch++) {
+          db.insertEpoch({ epoch, startBlock: 4500000 + (epoch - 145) * 100000, startTimestamp: 1700000000 + (epoch - 145) * 100000 });
+          db.insertIdentityState({
+            address: testAddress,
+            epoch,
+            state: epoch < 148 ? 'Newbie' : epoch < 150 ? 'Verified' : 'Human',
+            timestamp: 1700000000 + (epoch - 145) * 100000,
+          });
+        }
+      });
+
+      it('should return identity history across epochs', () => {
+        const result = db.getIdentityEpochs(testAddress);
+        expect(result.data.length).toBe(6);
+        expect(result.total).toBe(6);
+        expect(result.data[0].epoch).toBe(150); // Most recent first
+        expect(result.data[0].state).toBe('Human');
+      });
+
+      it('should support pagination', () => {
+        const result = db.getIdentityEpochs(testAddress, { limit: 3, offset: 0 });
+        expect(result.data.length).toBe(3);
+        expect(result.hasMore).toBe(true);
+      });
+    });
+
+    describe('getEpochIdentities()', () => {
+      beforeEach(() => {
+        db.insertIdentityState({ address: '0xaddr1', epoch: 150, state: 'Human', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr2', epoch: 150, state: 'Human', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr3', epoch: 150, state: 'Verified', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr4', epoch: 150, state: 'Newbie', timestamp: 1704067200 });
+      });
+
+      it('should return all identities for an epoch', () => {
+        const result = db.getEpochIdentities(150);
+        expect(result.data.length).toBe(4);
+        expect(result.total).toBe(4);
+      });
+
+      it('should filter by state', () => {
+        const result = db.getEpochIdentities(150, { state: 'Human' });
+        expect(result.data.length).toBe(2);
+        expect(result.data.every(d => d.state === 'Human')).toBe(true);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getEpochIdentities(150, { limit: 2, offset: 0 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+    });
+
+    describe('getEpochIdentitySummary()', () => {
+      beforeEach(() => {
+        db.insertIdentityState({ address: '0xaddr1', epoch: 150, state: 'Human', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr2', epoch: 150, state: 'Human', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr3', epoch: 150, state: 'Verified', timestamp: 1704067200 });
+        db.insertIdentityState({ address: '0xaddr4', epoch: 150, state: 'Newbie', timestamp: 1704067200 });
+      });
+
+      it('should return counts by state', () => {
+        const summary = db.getEpochIdentitySummary(150);
+        expect(summary.Human).toBe(2);
+        expect(summary.Verified).toBe(1);
+        expect(summary.Newbie).toBe(1);
+      });
+
+      it('should return null for non-existent epoch', () => {
+        const summary = db.getEpochIdentitySummary(999);
+        expect(Object.keys(summary).length).toBe(0);
+      });
+    });
+  });
+
+  // ==========================================
+  // Address State Methods Tests
+  // ==========================================
+
+  describe('Address State Methods', () => {
+    const testAddress = '0x1234567890123456789012345678901234567890';
+
+    describe('insertAddressState()', () => {
+      it('should insert an address state', () => {
+        db.insertAddressState({
+          address: testAddress,
+          epoch: 150,
+          balance: '1000.5',
+          stake: '500.25',
+          txCount: 42,
+        });
+
+        const state = db.getAddressState(testAddress, 150);
+        expect(state).not.toBeNull();
+        expect(state.balance).toBe('1000.5');
+        expect(state.stake).toBe('500.25');
+        expect(state.txCount).toBe(42);
+      });
+    });
+
+    describe('insertAddressStatesBatch()', () => {
+      it('should insert multiple address states', () => {
+        const states = [
+          { address: '0xaddr1', epoch: 150, balance: '100', stake: '50' },
+          { address: '0xaddr2', epoch: 150, balance: '200', stake: '100' },
+          { address: '0xaddr3', epoch: 150, balance: '300', stake: '150' },
+        ];
+
+        db.insertAddressStatesBatch(states);
+
+        const count = db.db.prepare('SELECT COUNT(*) as count FROM address_states').get().count;
+        expect(count).toBe(3);
+      });
+    });
+
+    describe('getAddressState()', () => {
+      it('should return address state for specific epoch', () => {
+        db.insertAddressState({ address: testAddress, epoch: 150, balance: '1000', stake: '500' });
+
+        const state = db.getAddressState(testAddress, 150);
+        expect(state.balance).toBe('1000');
+        expect(state.stake).toBe('500');
+      });
+
+      it('should be case-insensitive for address', () => {
+        db.insertAddressState({ address: testAddress.toUpperCase(), epoch: 150, balance: '1000', stake: '500' });
+
+        const state = db.getAddressState(testAddress.toLowerCase(), 150);
+        expect(state).not.toBeNull();
+      });
+
+      it('should return null for non-existent state', () => {
+        const state = db.getAddressState(testAddress, 999);
+        expect(state).toBeNull();
+      });
+    });
+
+    describe('getAddressStates()', () => {
+      beforeEach(() => {
+        for (let epoch = 145; epoch <= 150; epoch++) {
+          db.insertEpoch({ epoch, startBlock: 4500000 + (epoch - 145) * 100000, startTimestamp: 1700000000 + (epoch - 145) * 100000 });
+          db.insertAddressState({
+            address: testAddress,
+            epoch,
+            balance: String((epoch - 144) * 100),
+            stake: String((epoch - 144) * 50),
+          });
+        }
+      });
+
+      it('should return address state history across epochs', () => {
+        const result = db.getAddressStates(testAddress);
+        expect(result.data.length).toBe(6);
+        expect(result.total).toBe(6);
+        expect(result.data[0].epoch).toBe(150); // Most recent first
+        expect(result.data[0].balance).toBe('600');
+      });
+
+      it('should support pagination', () => {
+        const result = db.getAddressStates(testAddress, { limit: 3, offset: 0 });
+        expect(result.data.length).toBe(3);
+        expect(result.hasMore).toBe(true);
+      });
+    });
+  });
+
+  // ==========================================
+  // Table Creation Tests for New Tables
+  // ==========================================
+
+  describe('New Table Schema', () => {
+    it('should create epochs table', () => {
+      const table = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='epochs'").get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('epochs');
+    });
+
+    it('should create identity_states table', () => {
+      const table = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='identity_states'").get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('identity_states');
+    });
+
+    it('should create address_states table', () => {
+      const table = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='address_states'").get();
+      expect(table).toBeDefined();
+      expect(table.name).toBe('address_states');
+    });
+  });
+
+  describe('getStats() with new tables', () => {
+    it('should include epoch and identity counts', () => {
+      db.insertEpoch({ epoch: 150, startBlock: 5000000, startTimestamp: 1704067200 });
+      db.insertIdentityState({ address: '0xaddr1', epoch: 150, state: 'Human', timestamp: 1704067200 });
+      db.insertIdentityState({ address: '0xaddr2', epoch: 150, state: 'Verified', timestamp: 1704067200 });
+
+      const stats = db.getStats();
+      expect(stats.epochCount).toBe(1);
+      expect(stats.identityStateCount).toBe(2);
+    });
+  });
 });
 
 // Export the HistoryDB class for testing

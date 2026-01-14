@@ -9,6 +9,12 @@ const mockSetSyncStartBlock = jest.fn();
 const mockInsertBatch = jest.fn();
 const mockInit = jest.fn();
 const mockGetStats = jest.fn();
+const mockGetLastEpoch = jest.fn();
+const mockGetEpoch = jest.fn();
+const mockInsertEpoch = jest.fn();
+const mockCloseEpoch = jest.fn();
+const mockInsertIdentityStatesBatch = jest.fn();
+const mockInsertAddressStatesBatch = jest.fn();
 
 jest.mock('../src/db', () => ({
   enabled: true,
@@ -18,6 +24,12 @@ jest.mock('../src/db', () => ({
   setSyncStartBlock: mockSetSyncStartBlock,
   insertBatch: mockInsertBatch,
   getStats: mockGetStats,
+  getLastEpoch: mockGetLastEpoch,
+  getEpoch: mockGetEpoch,
+  insertEpoch: mockInsertEpoch,
+  closeEpoch: mockCloseEpoch,
+  insertIdentityStatesBatch: mockInsertIdentityStatesBatch,
+  insertAddressStatesBatch: mockInsertAddressStatesBatch,
 }));
 
 // Mock the RPC module
