@@ -1,7 +1,7 @@
 # idena-lite-api
 
 [![CI](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml/badge.svg)](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen?logo=jest&logoColor=white)](https://github.com/idenacommunity/idena-lite-api)
+[![Coverage](https://img.shields.io/badge/Coverage-96%25-brightgreen?logo=jest&logoColor=white)](https://github.com/idenacommunity/idena-lite-api)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
@@ -24,7 +24,7 @@ A fast API for Idena with **real-time queries** and **optional historical data s
 
 **This project is in beta stage - feature complete with comprehensive testing.**
 
-- ✅ **100% test coverage** - All code paths tested
+- ✅ **96% test coverage** - 215 tests covering all code paths
 - ✅ **API complete** - All endpoints implemented and documented
 - ✅ **Error handling** - Comprehensive error responses
 - 🔄 **Beta stage** - Ready for community testing
@@ -64,8 +64,8 @@ A **lightweight API** for Idena with two operation modes:
 - ✅ Everything from Mode 1, plus:
 - ✅ Transaction history per address
 - ✅ Block/transaction lookup from local database
-- ✅ Background sync to SQLite (~6-10 hours initial sync)
-- ✅ Much faster than full indexer (100+ hours)
+- ✅ Background sync to SQLite (~2-4 hours initial sync)
+- ✅ Parallel fetching (~12,000 blocks/min)
 
 ## 📊 Feature Comparison
 
@@ -77,10 +77,24 @@ A **lightweight API** for Idena with two operation modes:
 | Past epoch data | ❌ | ❌ | ✅ |
 | Full-text search | ❌ | ❌ | ✅ |
 | Analytics/aggregations | ❌ | ❌ | ✅ |
-| **Deployment time** | Minutes | Hours | 100+ hours |
+| Smart contract queries | ❌ | ❌ | ✅ |
+| Flip content | ❌ | ❌ | ✅ |
+| **Deployment time** | Minutes | 2-4 hours | 100+ hours |
 | **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
+| **Sync speed** | N/A | ~12,000 blocks/min | ~1,000 blocks/min |
 
-**Need full historical data with analytics?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api).
+## ⚠️ Limitations
+
+**idena-lite-api CANNOT provide:**
+
+- ❌ **Historical identity states** - "Was this address Human in epoch 150?" requires full indexer
+- ❌ **Historical epoch data** - Rewards, ceremony results from past epochs
+- ❌ **Full-text search** - Search across addresses, transactions, etc.
+- ❌ **Analytics** - Identity counts over time, staking trends, network stats
+- ❌ **Smart contract data** - Contract state, calls, deployments
+- ❌ **Flip content** - IPFS flip images and answers
+
+**Need these features?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api) (requires PostgreSQL, 100+ hours sync).
 
 ## 🚀 Quick Start
 
@@ -664,4 +678,4 @@ Special thanks to:
 **⚡ Status**: Beta - Ready for Community Testing
 **🔄 Version**: 0.2.0-beta
 **👥 Maintainer**: Idena Community
-**✅ Test Coverage**: 100% (statements, branches, functions, lines)
+**✅ Test Coverage**: 96% (215 tests)
