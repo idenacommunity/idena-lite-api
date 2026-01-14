@@ -713,6 +713,326 @@ describe('HistoryDB', () => {
       expect(stats.epochCount).toBe(1);
       expect(stats.identityStateCount).toBe(2);
     });
+
+    it('should include reward and validation counts', () => {
+      db.insertReward('0xaddr1', 150, 'validation', '100.5');
+      db.insertValidationResult({
+        address: '0xaddr1',
+        epoch: 150,
+        shortAnswers: 6,
+        shortCorrect: 5,
+      });
+
+      const stats = db.getStats();
+      expect(stats.rewardCount).toBe(1);
+      expect(stats.validationResultCount).toBe(1);
+    });
+  });
+
+  // ==========================================
+  // Rewards Methods Tests
+  // ==========================================
+
+  describe('Rewards Methods', () => {
+    describe('insertReward()', () => {
+      it('should insert a single reward', () => {
+        db.insertReward('0xaddr1', 150, 'validation', '100.5');
+
+        const rewards = db.getIdentityRewards('0xaddr1');
+        expect(rewards.total).toBe(1);
+        expect(rewards.data[0].type).toBe('validation');
+        expect(rewards.data[0].amount).toBe('100.5');
+      });
+
+      it('should replace existing reward on conflict', () => {
+        db.insertReward('0xaddr1', 150, 'validation', '100.5');
+        db.insertReward('0xaddr1', 150, 'validation', '200.0');
+
+        const rewards = db.getIdentityRewards('0xaddr1');
+        expect(rewards.total).toBe(1);
+        expect(rewards.data[0].amount).toBe('200.0');
+      });
+    });
+
+    describe('insertRewardsBatch()', () => {
+      it('should insert multiple rewards', () => {
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '50' },
+          { address: '0xaddr1', epoch: 149, type: 'validation', amount: '90' },
+        ]);
+
+        const rewards = db.getIdentityRewards('0xaddr1');
+        expect(rewards.total).toBe(3);
+      });
+
+      it('should handle empty array', () => {
+        db.insertRewardsBatch([]);
+        const stats = db.getStats();
+        expect(stats.rewardCount).toBe(0);
+      });
+    });
+
+    describe('getIdentityRewards()', () => {
+      beforeEach(() => {
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '50' },
+          { address: '0xaddr1', epoch: 149, type: 'validation', amount: '90' },
+          { address: '0xaddr2', epoch: 150, type: 'validation', amount: '80' },
+        ]);
+      });
+
+      it('should return rewards for address', () => {
+        const rewards = db.getIdentityRewards('0xaddr1');
+        expect(rewards.total).toBe(3);
+        expect(rewards.data.length).toBe(3);
+      });
+
+      it('should support pagination', () => {
+        const rewards = db.getIdentityRewards('0xaddr1', { limit: 2, offset: 0 });
+        expect(rewards.data.length).toBe(2);
+        expect(rewards.hasMore).toBe(true);
+      });
+
+      it('should filter by epoch', () => {
+        const rewards = db.getIdentityRewards('0xaddr1', { epoch: 150 });
+        expect(rewards.total).toBe(2);
+      });
+
+      it('should be case insensitive', () => {
+        const rewards = db.getIdentityRewards('0xADDR1');
+        expect(rewards.total).toBe(3);
+      });
+    });
+
+    describe('getIdentityRewardsAtEpoch()', () => {
+      beforeEach(() => {
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '50' },
+          { address: '0xaddr1', epoch: 150, type: 'invite', amount: '25' },
+        ]);
+      });
+
+      it('should return rewards breakdown for epoch', () => {
+        const result = db.getIdentityRewardsAtEpoch('0xaddr1', 150);
+        expect(result.epoch).toBe(150);
+        expect(result.rewards.validation).toBe('100');
+        expect(result.rewards.flip).toBe('50');
+        expect(result.rewards.invite).toBe('25');
+        expect(parseFloat(result.totalAmount)).toBe(175);
+      });
+
+      it('should return null when no rewards found', () => {
+        const result = db.getIdentityRewardsAtEpoch('0xaddr1', 999);
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('getEpochRewards()', () => {
+      beforeEach(() => {
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '50' },
+          { address: '0xaddr2', epoch: 150, type: 'validation', amount: '80' },
+          { address: '0xaddr3', epoch: 150, type: 'validation', amount: '120' },
+        ]);
+      });
+
+      it('should return rewards grouped by address', () => {
+        const result = db.getEpochRewards(150);
+        expect(result.total).toBe(3);
+        // Should be ordered by total amount descending
+        expect(result.data[0].address).toBe('0xaddr1'); // 150 total
+        expect(parseFloat(result.data[0].totalAmount)).toBe(150);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getEpochRewards(150, { limit: 2, offset: 0 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+
+      it('should filter by type', () => {
+        const result = db.getEpochRewards(150, { type: 'validation' });
+        expect(result.total).toBe(3);
+      });
+    });
+
+    describe('getEpochRewardsSummary()', () => {
+      beforeEach(() => {
+        db.insertRewardsBatch([
+          { address: '0xaddr1', epoch: 150, type: 'validation', amount: '100' },
+          { address: '0xaddr2', epoch: 150, type: 'validation', amount: '80' },
+          { address: '0xaddr1', epoch: 150, type: 'flip', amount: '50' },
+          { address: '0xaddr3', epoch: 150, type: 'invite', amount: '25' },
+        ]);
+      });
+
+      it('should return summary by type', () => {
+        const summary = db.getEpochRewardsSummary(150);
+        expect(summary.epoch).toBe(150);
+        expect(summary.byType.validation.recipientCount).toBe(2);
+        expect(parseFloat(summary.byType.validation.totalAmount)).toBe(180);
+        expect(summary.byType.flip.recipientCount).toBe(1);
+        expect(summary.totalRecipients).toBe(4);
+        expect(parseFloat(summary.grandTotal)).toBe(255);
+      });
+
+      it('should return null when no data', () => {
+        const summary = db.getEpochRewardsSummary(999);
+        expect(summary).toBeNull();
+      });
+    });
+  });
+
+  // ==========================================
+  // Validation Results Methods Tests
+  // ==========================================
+
+  describe('Validation Results Methods', () => {
+    describe('insertValidationResult()', () => {
+      it('should insert validation result', () => {
+        db.insertValidationResult({
+          address: '0xaddr1',
+          epoch: 150,
+          shortAnswers: 6,
+          shortCorrect: 5,
+          longAnswers: 20,
+          longCorrect: 18,
+          madeFlips: 3,
+          qualifiedFlips: 3,
+          totalReward: '100.5',
+          missedValidation: false,
+        });
+
+        const result = db.getValidationResult('0xaddr1', 150);
+        expect(result).not.toBeNull();
+        expect(result.shortAnswers).toBe(6);
+        expect(result.shortCorrect).toBe(5);
+        expect(result.totalReward).toBe('100.5');
+        expect(result.missedValidation).toBe(false);
+      });
+
+      it('should calculate scores correctly', () => {
+        db.insertValidationResult({
+          address: '0xaddr1',
+          epoch: 150,
+          shortAnswers: 6,
+          shortCorrect: 5,
+          longAnswers: 20,
+          longCorrect: 18,
+        });
+
+        const result = db.getValidationResult('0xaddr1', 150);
+        expect(result.shortScore).toBe('83.33');
+        expect(result.longScore).toBe('90.00');
+      });
+    });
+
+    describe('insertValidationResultsBatch()', () => {
+      it('should insert multiple validation results', () => {
+        db.insertValidationResultsBatch([
+          { address: '0xaddr1', epoch: 150, shortAnswers: 6, shortCorrect: 5 },
+          { address: '0xaddr2', epoch: 150, shortAnswers: 6, shortCorrect: 6 },
+          { address: '0xaddr3', epoch: 150, shortAnswers: 6, shortCorrect: 4, missedValidation: true },
+        ]);
+
+        const stats = db.getStats();
+        expect(stats.validationResultCount).toBe(3);
+      });
+    });
+
+    describe('getValidationResult()', () => {
+      beforeEach(() => {
+        db.insertValidationResult({
+          address: '0xaddr1',
+          epoch: 150,
+          shortAnswers: 6,
+          shortCorrect: 5,
+          longAnswers: 20,
+          longCorrect: 18,
+          madeFlips: 3,
+          qualifiedFlips: 3,
+          totalReward: '100.5',
+          missedValidation: false,
+        });
+      });
+
+      it('should return validation result', () => {
+        const result = db.getValidationResult('0xaddr1', 150);
+        expect(result).not.toBeNull();
+        expect(result.address).toBe('0xaddr1');
+        expect(result.epoch).toBe(150);
+      });
+
+      it('should be case insensitive', () => {
+        const result = db.getValidationResult('0xADDR1', 150);
+        expect(result).not.toBeNull();
+      });
+
+      it('should return null when not found', () => {
+        const result = db.getValidationResult('0xaddr1', 999);
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('getIdentityValidationHistory()', () => {
+      beforeEach(() => {
+        db.insertValidationResultsBatch([
+          { address: '0xaddr1', epoch: 150, shortAnswers: 6, shortCorrect: 5 },
+          { address: '0xaddr1', epoch: 149, shortAnswers: 6, shortCorrect: 6 },
+          { address: '0xaddr1', epoch: 148, shortAnswers: 6, shortCorrect: 4 },
+        ]);
+      });
+
+      it('should return validation history', () => {
+        const history = db.getIdentityValidationHistory('0xaddr1');
+        expect(history.total).toBe(3);
+        expect(history.data.length).toBe(3);
+        // Should be ordered by epoch descending
+        expect(history.data[0].epoch).toBe(150);
+      });
+
+      it('should support pagination', () => {
+        const history = db.getIdentityValidationHistory('0xaddr1', { limit: 2, offset: 0 });
+        expect(history.data.length).toBe(2);
+        expect(history.hasMore).toBe(true);
+      });
+    });
+
+    describe('getEpochValidationSummary()', () => {
+      beforeEach(() => {
+        db.insertValidationResultsBatch([
+          { address: '0xaddr1', epoch: 150, shortAnswers: 6, shortCorrect: 5, longAnswers: 20, longCorrect: 18, totalReward: '100', madeFlips: 3, qualifiedFlips: 3 },
+          { address: '0xaddr2', epoch: 150, shortAnswers: 6, shortCorrect: 6, longAnswers: 20, longCorrect: 20, totalReward: '120', madeFlips: 3, qualifiedFlips: 3 },
+          { address: '0xaddr3', epoch: 150, shortAnswers: 0, shortCorrect: 0, longAnswers: 0, longCorrect: 0, totalReward: '0', missedValidation: true },
+        ]);
+      });
+
+      it('should return validation summary', () => {
+        const summary = db.getEpochValidationSummary(150);
+        expect(summary.epoch).toBe(150);
+        expect(summary.totalParticipants).toBe(3);
+        expect(summary.validatedCount).toBe(2);
+        expect(summary.missedCount).toBe(1);
+        expect(parseFloat(summary.totalRewards)).toBe(220);
+        expect(summary.totalFlipsMade).toBe(6);
+      });
+
+      it('should calculate average scores', () => {
+        const summary = db.getEpochValidationSummary(150);
+        // Only 2 participants had short answers > 0
+        expect(parseFloat(summary.avgShortScore)).toBeGreaterThan(80);
+        expect(parseFloat(summary.avgLongScore)).toBeGreaterThan(90);
+      });
+
+      it('should return null when no data', () => {
+        const summary = db.getEpochValidationSummary(999);
+        expect(summary).toBeNull();
+      });
+    });
   });
 });
 

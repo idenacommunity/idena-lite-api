@@ -401,4 +401,194 @@ router.get('/:epoch/summary', (req, res) => {
   res.json({ result: summary });
 });
 
+// ==========================================
+// Epoch Rewards Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/epoch/{epoch}/rewards:
+ *   get:
+ *     summary: Get epoch rewards list
+ *     description: Returns paginated list of addresses with their rewards for this epoch
+ *     tags: [Rewards]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *         description: Filter by reward type
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: List of rewards for epoch
+ *       400:
+ *         description: Invalid epoch number
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/:epoch/rewards', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  const type = req.query.type || null;
+
+  const result = historyDB.getEpochRewards(epochNum, { limit, offset, type });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/epoch/{epoch}/rewards/summary:
+ *   get:
+ *     summary: Get epoch rewards summary
+ *     description: Returns reward totals by type for this epoch
+ *     tags: [Rewards]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Rewards summary by type
+ *       400:
+ *         description: Invalid epoch number
+ *       404:
+ *         description: No reward data for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/:epoch/rewards/summary', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const summary = historyDB.getEpochRewardsSummary(epochNum);
+
+  if (!summary) {
+    return res.status(404).json({
+      error: {
+        message: `No reward data for epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: summary });
+});
+
+/**
+ * @swagger
+ * /api/epoch/{epoch}/validation:
+ *   get:
+ *     summary: Get epoch validation summary
+ *     description: Returns validation ceremony statistics for this epoch
+ *     tags: [Validation]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Validation summary
+ *       400:
+ *         description: Invalid epoch number
+ *       404:
+ *         description: No validation data for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/:epoch/validation', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const summary = historyDB.getEpochValidationSummary(epochNum);
+
+  if (!summary) {
+    return res.status(404).json({
+      error: {
+        message: `No validation data for epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: summary });
+});
+
 module.exports = router;

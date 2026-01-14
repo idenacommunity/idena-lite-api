@@ -130,6 +130,32 @@ class HistoryDB {
         UNIQUE(address, epoch)
       );
 
+      -- Rewards table (rewards per identity per epoch by type)
+      CREATE TABLE IF NOT EXISTS rewards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        epoch INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        amount TEXT DEFAULT '0',
+        UNIQUE(address, epoch, type)
+      );
+
+      -- Validation results table (ceremony performance per identity per epoch)
+      CREATE TABLE IF NOT EXISTS validation_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT NOT NULL,
+        epoch INTEGER NOT NULL,
+        short_answers INTEGER DEFAULT 0,
+        short_correct INTEGER DEFAULT 0,
+        long_answers INTEGER DEFAULT 0,
+        long_correct INTEGER DEFAULT 0,
+        made_flips INTEGER DEFAULT 0,
+        qualified_flips INTEGER DEFAULT 0,
+        total_reward TEXT DEFAULT '0',
+        missed_validation INTEGER DEFAULT 0,
+        UNIQUE(address, epoch)
+      );
+
       -- Indexes for efficient queries
       CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(LOWER(from_addr));
       CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(LOWER(to_addr));
@@ -142,6 +168,11 @@ class HistoryDB {
       CREATE INDEX IF NOT EXISTS idx_address_states_addr ON address_states(LOWER(address));
       CREATE INDEX IF NOT EXISTS idx_address_states_epoch ON address_states(epoch);
       CREATE INDEX IF NOT EXISTS idx_epochs_start_block ON epochs(start_block);
+      CREATE INDEX IF NOT EXISTS idx_rewards_addr ON rewards(LOWER(address));
+      CREATE INDEX IF NOT EXISTS idx_rewards_epoch ON rewards(epoch);
+      CREATE INDEX IF NOT EXISTS idx_rewards_type ON rewards(type);
+      CREATE INDEX IF NOT EXISTS idx_validation_results_addr ON validation_results(LOWER(address));
+      CREATE INDEX IF NOT EXISTS idx_validation_results_epoch ON validation_results(epoch);
     `);
   }
 
@@ -405,6 +436,8 @@ class HistoryDB {
     const maxBlock = this.db.prepare('SELECT MAX(height) as max FROM blocks').get().max;
     const epochCount = this.db.prepare('SELECT COUNT(*) as count FROM epochs').get().count;
     const identityStateCount = this.db.prepare('SELECT COUNT(*) as count FROM identity_states').get().count;
+    const rewardCount = this.db.prepare('SELECT COUNT(*) as count FROM rewards').get().count;
+    const validationResultCount = this.db.prepare('SELECT COUNT(*) as count FROM validation_results').get().count;
 
     return {
       enabled: true,
@@ -412,6 +445,8 @@ class HistoryDB {
       txCount,
       epochCount,
       identityStateCount,
+      rewardCount,
+      validationResultCount,
       blockRange: minBlock && maxBlock ? { min: minBlock, max: maxBlock } : null,
     };
   }
@@ -840,6 +875,380 @@ class HistoryDB {
     }));
 
     return { data, total, limit, offset, hasMore };
+  }
+
+  // ==========================================
+  // Rewards Methods
+  // ==========================================
+
+  /**
+   * Insert a single reward
+   */
+  insertReward(address, epoch, type, amount) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO rewards (address, epoch, type, amount)
+      VALUES (?, ?, ?, ?)
+    `).run(address, epoch, type, amount);
+  }
+
+  /**
+   * Insert multiple rewards in a transaction
+   */
+  insertRewardsBatch(rewards) {
+    if (!this.enabled || !this.db || rewards.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO rewards (address, epoch, type, amount)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction(() => {
+      for (const r of rewards) {
+        stmt.run(r.address, r.epoch, r.type, r.amount || '0');
+      }
+    });
+
+    insertMany();
+  }
+
+  /**
+   * Get all rewards for an identity (paginated)
+   */
+  getIdentityRewards(address, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, epoch = null, type = null } = options;
+    const addrLower = address.toLowerCase();
+
+    let whereClause = 'WHERE LOWER(address) = ?';
+    const params = [addrLower];
+
+    if (epoch !== null) {
+      whereClause += ' AND epoch = ?';
+      params.push(epoch);
+    }
+
+    if (type !== null) {
+      whereClause += ' AND type = ?';
+      params.push(type);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(*) as count FROM rewards ${whereClause}`
+    ).get(...params).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM rewards
+      ${whereClause}
+      ORDER BY epoch DESC, type ASC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      epoch: row.epoch,
+      type: row.type,
+      amount: row.amount,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get rewards for identity at specific epoch
+   */
+  getIdentityRewardsAtEpoch(address, epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM rewards
+      WHERE LOWER(address) = LOWER(?) AND epoch = ?
+      ORDER BY type ASC
+    `).all(address, epochNum);
+
+    if (rows.length === 0) return null;
+
+    const rewards = {};
+    let totalAmount = 0;
+
+    for (const row of rows) {
+      rewards[row.type] = row.amount;
+      totalAmount += parseFloat(row.amount) || 0;
+    }
+
+    return {
+      address,
+      epoch: epochNum,
+      rewards,
+      totalAmount: totalAmount.toString(),
+    };
+  }
+
+  /**
+   * Get all rewards for an epoch (paginated)
+   */
+  getEpochRewards(epochNum, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, type = null } = options;
+
+    let whereClause = 'WHERE epoch = ?';
+    const params = [epochNum];
+
+    if (type) {
+      whereClause += ' AND type = ?';
+      params.push(type);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(DISTINCT address) as count FROM rewards ${whereClause}`
+    ).get(...params).count;
+
+    // Get unique addresses with their total rewards
+    const rows = this.db.prepare(`
+      SELECT address, SUM(CAST(amount AS REAL)) as total_amount
+      FROM rewards
+      ${whereClause}
+      GROUP BY address
+      ORDER BY total_amount DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      address: row.address,
+      totalAmount: row.total_amount.toString(),
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get reward summary by type for an epoch
+   */
+  getEpochRewardsSummary(epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const rows = this.db.prepare(`
+      SELECT
+        type,
+        COUNT(*) as recipient_count,
+        SUM(CAST(amount AS REAL)) as total_amount,
+        AVG(CAST(amount AS REAL)) as avg_amount
+      FROM rewards
+      WHERE epoch = ?
+      GROUP BY type
+      ORDER BY total_amount DESC
+    `).all(epochNum);
+
+    if (rows.length === 0) return null;
+
+    const summary = {};
+    let grandTotal = 0;
+    let totalRecipients = 0;
+
+    for (const row of rows) {
+      summary[row.type] = {
+        recipientCount: row.recipient_count,
+        totalAmount: row.total_amount.toString(),
+        avgAmount: row.avg_amount.toFixed(8),
+      };
+      grandTotal += row.total_amount;
+      totalRecipients += row.recipient_count;
+    }
+
+    return {
+      epoch: epochNum,
+      byType: summary,
+      grandTotal: grandTotal.toString(),
+      totalRecipients,
+    };
+  }
+
+  // ==========================================
+  // Validation Results Methods
+  // ==========================================
+
+  /**
+   * Insert a validation result
+   */
+  insertValidationResult(result) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO validation_results (
+        address, epoch, short_answers, short_correct,
+        long_answers, long_correct, made_flips, qualified_flips,
+        total_reward, missed_validation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      result.address,
+      result.epoch,
+      result.shortAnswers || 0,
+      result.shortCorrect || 0,
+      result.longAnswers || 0,
+      result.longCorrect || 0,
+      result.madeFlips || 0,
+      result.qualifiedFlips || 0,
+      result.totalReward || '0',
+      result.missedValidation ? 1 : 0
+    );
+  }
+
+  /**
+   * Insert multiple validation results in a transaction
+   */
+  insertValidationResultsBatch(results) {
+    if (!this.enabled || !this.db || results.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO validation_results (
+        address, epoch, short_answers, short_correct,
+        long_answers, long_correct, made_flips, qualified_flips,
+        total_reward, missed_validation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction(() => {
+      for (const r of results) {
+        stmt.run(
+          r.address,
+          r.epoch,
+          r.shortAnswers || 0,
+          r.shortCorrect || 0,
+          r.longAnswers || 0,
+          r.longCorrect || 0,
+          r.madeFlips || 0,
+          r.qualifiedFlips || 0,
+          r.totalReward || '0',
+          r.missedValidation ? 1 : 0
+        );
+      }
+    });
+
+    insertMany();
+  }
+
+  /**
+   * Get validation result for identity at specific epoch
+   */
+  getValidationResult(address, epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare(`
+      SELECT * FROM validation_results
+      WHERE LOWER(address) = LOWER(?) AND epoch = ?
+    `).get(address, epochNum);
+
+    if (!row) return null;
+
+    return {
+      address: row.address,
+      epoch: row.epoch,
+      shortAnswers: row.short_answers,
+      shortCorrect: row.short_correct,
+      longAnswers: row.long_answers,
+      longCorrect: row.long_correct,
+      madeFlips: row.made_flips,
+      qualifiedFlips: row.qualified_flips,
+      totalReward: row.total_reward,
+      missedValidation: row.missed_validation === 1,
+      shortScore: row.short_answers > 0
+        ? ((row.short_correct / row.short_answers) * 100).toFixed(2)
+        : '0.00',
+      longScore: row.long_answers > 0
+        ? ((row.long_correct / row.long_answers) * 100).toFixed(2)
+        : '0.00',
+    };
+  }
+
+  /**
+   * Get validation history for identity (paginated)
+   */
+  getIdentityValidationHistory(address, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0 } = options;
+    const addrLower = address.toLowerCase();
+
+    const total = this.db.prepare(
+      'SELECT COUNT(*) as count FROM validation_results WHERE LOWER(address) = ?'
+    ).get(addrLower).count;
+
+    const rows = this.db.prepare(`
+      SELECT vr.*, ids.state, ids.prev_state
+      FROM validation_results vr
+      LEFT JOIN identity_states ids ON LOWER(ids.address) = LOWER(vr.address) AND ids.epoch = vr.epoch
+      WHERE LOWER(vr.address) = ?
+      ORDER BY vr.epoch DESC
+      LIMIT ? OFFSET ?
+    `).all(addrLower, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      epoch: row.epoch,
+      shortAnswers: row.short_answers,
+      shortCorrect: row.short_correct,
+      longAnswers: row.long_answers,
+      longCorrect: row.long_correct,
+      madeFlips: row.made_flips,
+      qualifiedFlips: row.qualified_flips,
+      totalReward: row.total_reward,
+      missedValidation: row.missed_validation === 1,
+      state: row.state,
+      prevState: row.prev_state,
+      shortScore: row.short_answers > 0
+        ? ((row.short_correct / row.short_answers) * 100).toFixed(2)
+        : '0.00',
+      longScore: row.long_answers > 0
+        ? ((row.long_correct / row.long_answers) * 100).toFixed(2)
+        : '0.00',
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get validation summary for an epoch
+   */
+  getEpochValidationSummary(epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_participants,
+        SUM(CASE WHEN missed_validation = 0 THEN 1 ELSE 0 END) as validated_count,
+        SUM(CASE WHEN missed_validation = 1 THEN 1 ELSE 0 END) as missed_count,
+        AVG(CASE WHEN short_answers > 0 THEN (short_correct * 100.0 / short_answers) ELSE NULL END) as avg_short_score,
+        AVG(CASE WHEN long_answers > 0 THEN (long_correct * 100.0 / long_answers) ELSE NULL END) as avg_long_score,
+        SUM(CAST(total_reward AS REAL)) as total_rewards,
+        SUM(made_flips) as total_flips_made,
+        SUM(qualified_flips) as total_flips_qualified
+      FROM validation_results
+      WHERE epoch = ?
+    `).get(epochNum);
+
+    if (!row || row.total_participants === 0) return null;
+
+    return {
+      epoch: epochNum,
+      totalParticipants: row.total_participants,
+      validatedCount: row.validated_count,
+      missedCount: row.missed_count,
+      avgShortScore: row.avg_short_score ? row.avg_short_score.toFixed(2) : '0.00',
+      avgLongScore: row.avg_long_score ? row.avg_long_score.toFixed(2) : '0.00',
+      totalRewards: row.total_rewards ? row.total_rewards.toString() : '0',
+      totalFlipsMade: row.total_flips_made,
+      totalFlipsQualified: row.total_flips_qualified,
+    };
   }
 
   /**

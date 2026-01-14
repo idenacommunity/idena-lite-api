@@ -215,6 +215,11 @@ class SyncService {
           await this._closeEpoch(this.lastSeenEpoch, prevBlock);
         }
 
+        // Fetch rewards for the closed epoch (after validation is complete)
+        if (this.epochSnapshotEnabled && this.lastSeenEpoch !== null) {
+          await this._fetchEpochRewards(this.lastSeenEpoch);
+        }
+
         // Create new epoch
         await this._createEpoch(currentEpoch, block);
 
@@ -351,6 +356,161 @@ class SyncService {
     } catch (error) {
       console.error(`Failed to snapshot address states for epoch ${epochNum}:`, error.message);
     }
+  }
+
+  /**
+   * Fetch and store rewards for a completed epoch
+   * Called after epoch closes (when new epoch starts)
+   */
+  async _fetchEpochRewards(epochNum) {
+    if (!this.epochSnapshotEnabled) return;
+
+    try {
+      // Get all identities that were active in this epoch
+      const identityStates = historyDB.getEpochIdentities(epochNum, { limit: 10000, offset: 0 });
+
+      if (!identityStates.data || identityStates.data.length === 0) {
+        console.log(`No identities found for epoch ${epochNum}, skipping reward fetch`);
+        return;
+      }
+
+      const rewards = [];
+      const validationResults = [];
+      const addresses = identityStates.data.map(ids => ids.address);
+
+      // Fetch rewards in batches
+      for (let i = 0; i < addresses.length; i += this.concurrency) {
+        const batch = addresses.slice(i, i + this.concurrency);
+
+        const fetchPromises = batch.map(async addr => {
+          try {
+            // Try to fetch epoch rewards for identity
+            // Note: This RPC call may vary depending on Idena node version
+            const epochIdentity = await this.rpc.call('dna_epochIdentity', [addr, epochNum]);
+
+            if (epochIdentity) {
+              // Extract validation results
+              const validationResult = {
+                address: addr,
+                epoch: epochNum,
+                shortAnswers: epochIdentity.shortAnswers || 0,
+                shortCorrect: epochIdentity.shortFlips?.filter(f => f.gradeScore > 0).length || 0,
+                longAnswers: epochIdentity.longAnswers || 0,
+                longCorrect: epochIdentity.longFlips?.filter(f => f.gradeScore > 0).length || 0,
+                madeFlips: epochIdentity.madeFlips || 0,
+                qualifiedFlips: epochIdentity.madeFlips || 0,
+                totalReward: epochIdentity.totalReward || '0',
+                missedValidation: epochIdentity.missed || false,
+              };
+
+              // Extract rewards by type
+              if (epochIdentity.rewards && Array.isArray(epochIdentity.rewards)) {
+                for (const reward of epochIdentity.rewards) {
+                  rewards.push({
+                    address: addr,
+                    epoch: epochNum,
+                    type: reward.type || 'unknown',
+                    amount: reward.balance || reward.amount || '0',
+                  });
+                }
+              } else if (epochIdentity.totalReward) {
+                // If no detailed rewards, store as validation reward
+                rewards.push({
+                  address: addr,
+                  epoch: epochNum,
+                  type: 'validation',
+                  amount: epochIdentity.totalReward,
+                });
+              }
+
+              return validationResult;
+            }
+            return null;
+          } catch {
+            // RPC method might not be available
+            return null;
+          }
+        });
+
+        const results = await Promise.all(fetchPromises);
+        validationResults.push(...results.filter(Boolean));
+      }
+
+      // Store rewards and validation results
+      if (rewards.length > 0) {
+        historyDB.insertRewardsBatch(rewards);
+        console.log(`Stored ${rewards.length} reward entries for epoch ${epochNum}`);
+      }
+
+      if (validationResults.length > 0) {
+        historyDB.insertValidationResultsBatch(validationResults);
+        console.log(`Stored ${validationResults.length} validation results for epoch ${epochNum}`);
+      }
+    } catch (error) {
+      console.error(`Failed to fetch epoch rewards for epoch ${epochNum}:`, error.message);
+    }
+  }
+
+  /**
+   * Alternative: Calculate rewards from identity state transitions
+   * This can be used as a fallback if epoch-specific RPC calls aren't available
+   */
+  async _calculateRewardsFromStates(epochNum) {
+    if (!this.epochSnapshotEnabled) return;
+
+    try {
+      // Get identity states for this epoch
+      const currentStates = historyDB.getEpochIdentities(epochNum, { limit: 10000, offset: 0 });
+      if (!currentStates.data || currentStates.data.length === 0) return;
+
+      const validationResults = [];
+
+      for (const state of currentStates.data) {
+        // Determine if identity passed validation based on state transition
+        const prevEpochState = historyDB.getIdentityState(state.address, epochNum - 1);
+        const passedValidation = this._didPassValidation(prevEpochState?.state, state.state);
+
+        validationResults.push({
+          address: state.address,
+          epoch: epochNum,
+          shortAnswers: 0,
+          shortCorrect: 0,
+          longAnswers: 0,
+          longCorrect: 0,
+          madeFlips: 0,
+          qualifiedFlips: 0,
+          totalReward: '0', // Would need to fetch actual balance changes
+          missedValidation: !passedValidation,
+        });
+      }
+
+      if (validationResults.length > 0) {
+        historyDB.insertValidationResultsBatch(validationResults);
+        console.log(`Calculated ${validationResults.length} validation results for epoch ${epochNum} from state transitions`);
+      }
+    } catch (error) {
+      console.error(`Failed to calculate rewards for epoch ${epochNum}:`, error.message);
+    }
+  }
+
+  /**
+   * Determine if an identity passed validation based on state transition
+   */
+  _didPassValidation(prevState, newState) {
+    const passingStates = ['Newbie', 'Verified', 'Human', 'Suspended'];
+    const failingTransitions = ['Zombie', 'Killed', 'Undefined'];
+
+    // If new state is a failing state, they didn't pass
+    if (failingTransitions.includes(newState)) {
+      return false;
+    }
+
+    // If they're in a passing state, they likely passed
+    if (passingStates.includes(newState)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**

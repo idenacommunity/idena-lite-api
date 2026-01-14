@@ -586,4 +586,302 @@ router.get('/address/:address/state/:epoch', (req, res) => {
   res.json({ result: state });
 });
 
+// ==========================================
+// Rewards History Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/rewards:
+ *   get:
+ *     summary: Get identity rewards history
+ *     description: Returns all rewards for an identity across epochs
+ *     tags: [Rewards]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: query
+ *         name: epoch
+ *         schema:
+ *           type: integer
+ *         description: Filter by specific epoch
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *         description: Filter by reward type (validation, flip, invite, etc.)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Rewards history
+ *       400:
+ *         description: Invalid address format
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/rewards', (req, res) => {
+  const { address } = req.params;
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  const epoch = req.query.epoch ? parseInt(req.query.epoch) : null;
+  const type = req.query.type || null;
+
+  const result = historyDB.getIdentityRewards(address, { limit, offset, epoch, type });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/rewards/{epoch}:
+ *   get:
+ *     summary: Get identity rewards at specific epoch
+ *     description: Returns detailed rewards breakdown for an identity at a specific epoch
+ *     tags: [Rewards]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Rewards at epoch
+ *       400:
+ *         description: Invalid address or epoch
+ *       404:
+ *         description: No rewards found for this identity at this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/rewards/:epoch', (req, res) => {
+  const { address } = req.params;
+  const epochNum = parseInt(req.params.epoch);
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const rewards = historyDB.getIdentityRewardsAtEpoch(address, epochNum);
+
+  if (!rewards) {
+    return res.status(404).json({
+      error: {
+        message: `No rewards found for ${address} at epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result: rewards });
+});
+
+// ==========================================
+// Validation History Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/validation:
+ *   get:
+ *     summary: Get identity validation history
+ *     description: Returns validation ceremony results across all epochs
+ *     tags: [Validation]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Validation history
+ *       400:
+ *         description: Invalid address format
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/validation', (req, res) => {
+  const { address } = req.params;
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+
+  const result = historyDB.getIdentityValidationHistory(address, { limit, offset });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/validation/{epoch}:
+ *   get:
+ *     summary: Get identity validation result at specific epoch
+ *     description: Returns detailed validation ceremony results for an identity at a specific epoch
+ *     tags: [Validation]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Validation result at epoch
+ *       400:
+ *         description: Invalid address or epoch
+ *       404:
+ *         description: No validation data found for this identity at this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/validation/:epoch', (req, res) => {
+  const { address } = req.params;
+  const epochNum = parseInt(req.params.epoch);
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const result = historyDB.getValidationResult(address, epochNum);
+
+  if (!result) {
+    return res.status(404).json({
+      error: {
+        message: `No validation data found for ${address} at epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result });
+});
+
 module.exports = router;

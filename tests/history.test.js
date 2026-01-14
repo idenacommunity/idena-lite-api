@@ -8,6 +8,10 @@ const mockGetIdentityEpochs = jest.fn();
 const mockGetIdentityState = jest.fn();
 const mockGetAddressStates = jest.fn();
 const mockGetAddressState = jest.fn();
+const mockGetIdentityRewards = jest.fn();
+const mockGetIdentityRewardsAtEpoch = jest.fn();
+const mockGetIdentityValidationHistory = jest.fn();
+const mockGetValidationResult = jest.fn();
 
 jest.mock('../src/db', () => ({
   enabled: true,
@@ -20,6 +24,10 @@ jest.mock('../src/db', () => ({
   getIdentityState: mockGetIdentityState,
   getAddressStates: mockGetAddressStates,
   getAddressState: mockGetAddressState,
+  getIdentityRewards: mockGetIdentityRewards,
+  getIdentityRewardsAtEpoch: mockGetIdentityRewardsAtEpoch,
+  getIdentityValidationHistory: mockGetIdentityValidationHistory,
+  getValidationResult: mockGetValidationResult,
   init: jest.fn(),
 }));
 
@@ -642,6 +650,300 @@ describe('History Routes', () => {
 
       await request(app)
         .get(`/api/history/address/${validAddress}/state/150`)
+        .expect(503);
+    });
+  });
+
+  // ==========================================
+  // Identity Rewards History Tests
+  // ==========================================
+
+  describe('GET /api/history/identity/:address/rewards', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return identity rewards history', async () => {
+      const mockResult = {
+        data: [
+          { epoch: 150, type: 'validation', amount: '100.5' },
+          { epoch: 150, type: 'flip', amount: '25.0' },
+          { epoch: 149, type: 'validation', amount: '95.0' },
+        ],
+        total: 50,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      };
+      mockGetIdentityRewards.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards`)
+        .expect(200);
+
+      expect(response.body.data.length).toBe(3);
+      expect(response.body.total).toBe(50);
+      expect(mockGetIdentityRewards).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 50, offset: 0 })
+      );
+    });
+
+    it('should support pagination', async () => {
+      mockGetIdentityRewards.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards?limit=10&offset=20`)
+        .expect(200);
+
+      expect(mockGetIdentityRewards).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 10, offset: 20 })
+      );
+    });
+
+    it('should support type filter', async () => {
+      mockGetIdentityRewards.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards?type=validation`)
+        .expect(200);
+
+      expect(mockGetIdentityRewards).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ type: 'validation' })
+      );
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/rewards')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards`)
+        .expect(503);
+    });
+  });
+
+  describe('GET /api/history/identity/:address/rewards/:epoch', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return identity rewards at specific epoch', async () => {
+      const mockResult = {
+        data: [
+          { type: 'validation', amount: '100.5' },
+          { type: 'flip', amount: '25.0' },
+          { type: 'invite', amount: '10.0' },
+        ],
+        total: '135.5',
+      };
+      mockGetIdentityRewardsAtEpoch.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards/150`)
+        .expect(200);
+
+      expect(response.body.result.data.length).toBe(3);
+      expect(response.body.result.total).toBe('135.5');
+      expect(mockGetIdentityRewardsAtEpoch).toHaveBeenCalledWith(validAddress, 150);
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/rewards/150')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 400 for invalid epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards/abc`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards/-1`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 404 when no rewards found', async () => {
+      mockGetIdentityRewardsAtEpoch.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards/999`)
+        .expect(404);
+
+      expect(response.body.error.message).toContain('No rewards found');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/rewards/150`)
+        .expect(503);
+    });
+  });
+
+  // ==========================================
+  // Identity Validation History Tests
+  // ==========================================
+
+  describe('GET /api/history/identity/:address/validation', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return identity validation history', async () => {
+      const mockResult = {
+        data: [
+          {
+            epoch: 150,
+            shortAnswers: 6,
+            shortCorrect: 6,
+            longAnswers: 24,
+            longCorrect: 23,
+            madeFlips: 3,
+            qualifiedFlips: 3,
+            totalReward: '135.5',
+            missedValidation: 0,
+          },
+          {
+            epoch: 149,
+            shortAnswers: 6,
+            shortCorrect: 5,
+            longAnswers: 24,
+            longCorrect: 22,
+            madeFlips: 3,
+            qualifiedFlips: 3,
+            totalReward: '120.0',
+            missedValidation: 0,
+          },
+        ],
+        total: 50,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      };
+      mockGetIdentityValidationHistory.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/validation`)
+        .expect(200);
+
+      expect(response.body.data.length).toBe(2);
+      expect(response.body.data[0].shortCorrect).toBe(6);
+      expect(mockGetIdentityValidationHistory).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 50, offset: 0 })
+      );
+    });
+
+    it('should support pagination', async () => {
+      mockGetIdentityValidationHistory.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/validation?limit=10&offset=20`)
+        .expect(200);
+
+      expect(mockGetIdentityValidationHistory).toHaveBeenCalledWith(
+        validAddress,
+        expect.objectContaining({ limit: 10, offset: 20 })
+      );
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/validation')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/validation`)
+        .expect(503);
+    });
+  });
+
+  describe('GET /api/history/identity/:address/validation/:epoch', () => {
+    const validAddress = '0x1234567890abcdef1234567890abcdef12345678';
+
+    it('should return validation result at specific epoch', async () => {
+      const mockResult = {
+        address: validAddress,
+        epoch: 150,
+        shortAnswers: 6,
+        shortCorrect: 6,
+        longAnswers: 24,
+        longCorrect: 23,
+        madeFlips: 3,
+        qualifiedFlips: 3,
+        totalReward: '135.5',
+        missedValidation: 0,
+      };
+      mockGetValidationResult.mockReturnValue(mockResult);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/validation/150`)
+        .expect(200);
+
+      expect(response.body.result.shortCorrect).toBe(6);
+      expect(response.body.result.totalReward).toBe('135.5');
+      expect(mockGetValidationResult).toHaveBeenCalledWith(validAddress, 150);
+    });
+
+    it('should return 400 for invalid address', async () => {
+      const response = await request(app)
+        .get('/api/history/identity/invalid/validation/150')
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid address format');
+    });
+
+    it('should return 400 for invalid epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/validation/abc`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch number', async () => {
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/validation/-1`)
+        .expect(400);
+
+      expect(response.body.error.message).toContain('Invalid epoch number');
+    });
+
+    it('should return 404 when validation result not found', async () => {
+      mockGetValidationResult.mockReturnValue(null);
+
+      const response = await request(app)
+        .get(`/api/history/identity/${validAddress}/validation/999`)
+        .expect(404);
+
+      expect(response.body.error.message).toContain('No validation data found');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app)
+        .get(`/api/history/identity/${validAddress}/validation/150`)
         .expect(503);
     });
   });

@@ -8,6 +8,9 @@ const mockDbGetEpoch = jest.fn();
 const mockDbGetEpochs = jest.fn();
 const mockDbGetEpochIdentities = jest.fn();
 const mockDbGetEpochIdentitySummary = jest.fn();
+const mockDbGetEpochRewards = jest.fn();
+const mockDbGetEpochRewardsSummary = jest.fn();
+const mockDbGetEpochValidationSummary = jest.fn();
 
 // Mock RPC module
 jest.mock('../src/rpc', () => {
@@ -25,6 +28,9 @@ jest.mock('../src/db', () => ({
   getEpochs: mockDbGetEpochs,
   getEpochIdentities: mockDbGetEpochIdentities,
   getEpochIdentitySummary: mockDbGetEpochIdentitySummary,
+  getEpochRewards: mockDbGetEpochRewards,
+  getEpochRewardsSummary: mockDbGetEpochRewardsSummary,
+  getEpochValidationSummary: mockDbGetEpochValidationSummary,
 }));
 
 const request = require('supertest');
@@ -315,6 +321,161 @@ describe('Epoch Routes', () => {
       historyDB.enabled = false;
 
       await request(app).get('/api/epoch/150/summary').expect(503);
+
+      historyDB.enabled = true;
+    });
+  });
+
+  // ==========================================
+  // Epoch Rewards Endpoints Tests
+  // ==========================================
+
+  describe('GET /api/epoch/:epoch/rewards', () => {
+    it('should return paginated rewards list', async () => {
+      const mockResult = {
+        data: [
+          { address: '0xaddr1', type: 'validation', amount: '100.5' },
+          { address: '0xaddr2', type: 'flip', amount: '25.0' },
+        ],
+        total: 1000,
+        limit: 50,
+        offset: 0,
+        hasMore: true,
+      };
+      mockDbGetEpochRewards.mockReturnValue(mockResult);
+
+      const response = await request(app).get('/api/epoch/150/rewards').expect(200);
+
+      expect(response.body.data.length).toBe(2);
+      expect(response.body.total).toBe(1000);
+      expect(response.body.hasMore).toBe(true);
+      expect(mockDbGetEpochRewards).toHaveBeenCalledWith(150, expect.objectContaining({ limit: 50, offset: 0 }));
+    });
+
+    it('should support pagination', async () => {
+      mockDbGetEpochRewards.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app).get('/api/epoch/150/rewards?limit=25&offset=100').expect(200);
+
+      expect(mockDbGetEpochRewards).toHaveBeenCalledWith(150, expect.objectContaining({ limit: 25, offset: 100 }));
+    });
+
+    it('should support type filter', async () => {
+      mockDbGetEpochRewards.mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await request(app).get('/api/epoch/150/rewards?type=validation').expect(200);
+
+      expect(mockDbGetEpochRewards).toHaveBeenCalledWith(150, expect.objectContaining({ type: 'validation' }));
+    });
+
+    it('should return 400 for invalid epoch', async () => {
+      const response = await request(app).get('/api/epoch/invalid/rewards').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch', async () => {
+      const response = await request(app).get('/api/epoch/-1/rewards').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app).get('/api/epoch/150/rewards').expect(503);
+
+      historyDB.enabled = true;
+    });
+  });
+
+  describe('GET /api/epoch/:epoch/rewards/summary', () => {
+    it('should return rewards summary by type', async () => {
+      const mockSummary = {
+        validation: { count: 500, total: '50000.0' },
+        flip: { count: 300, total: '7500.0' },
+        invite: { count: 100, total: '1000.0' },
+      };
+      mockDbGetEpochRewardsSummary.mockReturnValue(mockSummary);
+
+      const response = await request(app).get('/api/epoch/150/rewards/summary').expect(200);
+
+      expect(response.body.result.validation.count).toBe(500);
+      expect(response.body.result.flip.total).toBe('7500.0');
+    });
+
+    it('should return 400 for invalid epoch', async () => {
+      const response = await request(app).get('/api/epoch/invalid/rewards/summary').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 404 when no reward data exists', async () => {
+      mockDbGetEpochRewardsSummary.mockReturnValue(null);
+
+      const response = await request(app).get('/api/epoch/999/rewards/summary').expect(404);
+
+      expect(response.body.error.message).toContain('No reward data');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app).get('/api/epoch/150/rewards/summary').expect(503);
+
+      historyDB.enabled = true;
+    });
+  });
+
+  // ==========================================
+  // Epoch Validation Endpoints Tests
+  // ==========================================
+
+  describe('GET /api/epoch/:epoch/validation', () => {
+    it('should return validation summary for epoch', async () => {
+      const mockSummary = {
+        totalParticipants: 1000,
+        passed: 850,
+        failed: 100,
+        missed: 50,
+        avgShortScore: 0.95,
+        avgLongScore: 0.92,
+        totalFlipsMade: 2500,
+        totalQualifiedFlips: 2300,
+      };
+      mockDbGetEpochValidationSummary.mockReturnValue(mockSummary);
+
+      const response = await request(app).get('/api/epoch/150/validation').expect(200);
+
+      expect(response.body.result.totalParticipants).toBe(1000);
+      expect(response.body.result.passed).toBe(850);
+      expect(response.body.result.avgShortScore).toBe(0.95);
+    });
+
+    it('should return 400 for invalid epoch', async () => {
+      const response = await request(app).get('/api/epoch/invalid/validation').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 400 for negative epoch', async () => {
+      const response = await request(app).get('/api/epoch/-1/validation').expect(400);
+
+      expect(response.body.error.message).toBe('Invalid epoch number');
+    });
+
+    it('should return 404 when no validation data exists', async () => {
+      mockDbGetEpochValidationSummary.mockReturnValue(null);
+
+      const response = await request(app).get('/api/epoch/999/validation').expect(404);
+
+      expect(response.body.error.message).toContain('No validation data');
+    });
+
+    it('should return 503 when history is disabled', async () => {
+      historyDB.enabled = false;
+
+      await request(app).get('/api/epoch/150/validation').expect(503);
 
       historyDB.enabled = true;
     });
