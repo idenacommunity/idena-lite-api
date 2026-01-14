@@ -41,3 +41,9 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# SQLite database (historical sync)
+data/
+*.db
+*.db-wal
+*.db-shm

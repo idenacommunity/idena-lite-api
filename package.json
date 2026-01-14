@@ -1,7 +1,7 @@
 {
   "name": "idena-lite-api",
-  "version": "0.1.0-beta",
-  "description": "Current-state API for Idena - real-time identity, balance, and epoch queries",
+  "version": "0.2.0-beta",
+  "description": "Idena API with real-time queries and optional historical data sync",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -26,6 +26,7 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",

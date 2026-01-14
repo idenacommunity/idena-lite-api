@@ -5,9 +5,9 @@ const options = {
     openapi: '3.0.0',
     info: {
       title: 'Idena Lite API',
-      version: '0.1.0-beta',
+      version: '0.2.0-beta',
       description:
-        'Current-state API for Idena blockchain. Provides real-time identity, balance, and epoch data via RPC node queries. Note: This API does NOT support historical queries or transaction history - use idena-indexer-api for those features.',
+        'Idena API with real-time queries and optional historical data sync. Current-state endpoints query the RPC node directly. Historical endpoints (under /api/history/*) require HISTORY_ENABLED=true and use a local SQLite database.',
       license: {
         name: 'MIT',
         url: 'https://opensource.org/licenses/MIT',
@@ -47,6 +47,10 @@ const options = {
       {
         name: 'Epoch',
         description: 'Epoch and validation ceremony information',
+      },
+      {
+        name: 'History',
+        description: 'Historical queries (requires HISTORY_ENABLED=true)',
       },
     ],
     components: {

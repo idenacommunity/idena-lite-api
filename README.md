@@ -12,9 +12,11 @@
 
 **Community-maintained lightweight API for the Idena blockchain**
 
-A **current-state** API for Idena - query real-time identity, balance, and epoch data without running a full indexer.
+A fast API for Idena with **real-time queries** and **optional historical data sync**.
 
-> ⚠️ **Scope**: This API provides **current state only** (real-time data). For historical queries, transaction history, or analytics, use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api).
+> **Two modes:**
+> - **Default**: Real-time queries only (instant deployment, no sync needed)
+> - **With history**: Enable `HISTORY_ENABLED=true` to sync transaction history to local SQLite
 
 ---
 
@@ -32,7 +34,8 @@ A **current-state** API for Idena - query real-time identity, balance, and epoch
 
 ### What Works
 - ✅ Express server with security middleware
-- ✅ All API endpoints (identity, balance, transaction, block, epoch)
+- ✅ Real-time endpoints (identity, balance, transaction, block, epoch)
+- ✅ **NEW**: Historical endpoints with SQLite sync (transaction history)
 - ✅ Redis caching with graceful degradation
 - ✅ RPC client with error handling
 - ✅ Docker deployment
@@ -48,33 +51,36 @@ A **current-state** API for Idena - query real-time identity, balance, and epoch
 
 ## 🎯 Purpose
 
-A **stateless caching proxy** for Idena RPC nodes, designed for:
+A **lightweight API** for Idena with two operation modes:
+
+### Mode 1: Real-time Only (Default)
 - ✅ Identity verification (login gates, access control)
 - ✅ Current balance/stake checks
 - ✅ Epoch and validation ceremony info
-- ✅ Simple integrations (wallets, whitelisting)
+- ✅ Deploys in minutes (no sync needed)
+- ✅ Stateless - no database required
 
-**Key characteristics:**
-- ✅ Deploys in minutes (no blockchain sync required)
-- ✅ Works with any Idena RPC node
-- ✅ Stateless - no database needed
-- ✅ Fast cached responses via Redis
-- ✅ Horizontally scalable
+### Mode 2: With Historical Sync (`HISTORY_ENABLED=true`)
+- ✅ Everything from Mode 1, plus:
+- ✅ Transaction history per address
+- ✅ Block/transaction lookup from local database
+- ✅ Background sync to SQLite (~6-10 hours initial sync)
+- ✅ Much faster than full indexer (100+ hours)
 
-## ⚠️ Limitations
+## 📊 Feature Comparison
 
-This API queries the **current state** from an Idena node. It **cannot** provide:
+| Feature | idena-lite-api | idena-lite-api + history | idena-indexer-api |
+|---------|----------------|--------------------------|-------------------|
+| Current identity/balance | ✅ | ✅ | ✅ |
+| Transaction history | ❌ | ✅ | ✅ |
+| Historical identity states | ❌ | ❌ | ✅ |
+| Past epoch data | ❌ | ❌ | ✅ |
+| Full-text search | ❌ | ❌ | ✅ |
+| Analytics/aggregations | ❌ | ❌ | ✅ |
+| **Deployment time** | Minutes | Hours | 100+ hours |
+| **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
 
-| Feature | idena-lite-api | idena-indexer-api |
-|---------|----------------|-------------------|
-| Current identity/balance | ✅ Yes | ✅ Yes |
-| Transaction history | ❌ No | ✅ Yes |
-| Historical identity states | ❌ No | ✅ Yes |
-| Past epoch data | ❌ No | ✅ Yes |
-| Full-text search | ❌ No | ✅ Yes |
-| Analytics/aggregations | ❌ No | ✅ Yes |
-
-**Need historical data?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api) (requires PostgreSQL and 100+ hours initial sync).
+**Need full historical data with analytics?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api).
 
 ## 🚀 Quick Start
 
@@ -157,6 +163,23 @@ GET /api/epoch/current
 GET /api/epoch/intervals
 ```
 
+### Historical Endpoints (requires `HISTORY_ENABLED=true`)
+```bash
+# Get sync status
+GET /api/history/status
+# Response: { "enabled": true, "running": true, "lastSyncedBlock": 5000000, "progress": "45.2%" }
+
+# Get transaction history for an address
+GET /api/history/address/0x1234.../transactions?limit=50&offset=0
+# Response: { "data": [...], "total": 150, "hasMore": true }
+
+# Get historical block from local database
+GET /api/history/block/5000000
+
+# Get historical transaction from local database
+GET /api/history/transaction/0xabcd...
+```
+
 ## 📖 API Documentation
 
 Interactive API documentation is available via Swagger UI:
@@ -189,6 +212,10 @@ Access the documentation at `http://localhost:3000/api/docs` when running locall
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `REDIS_ENABLED` | Enable/disable caching | `true` |
 | `CACHE_TTL` | Cache duration in seconds | `300` (5 min) |
+| `HISTORY_ENABLED` | Enable historical sync to SQLite | `true` |
+| `SQLITE_PATH` | Path to SQLite database file | `./data/history.db` |
+| `SYNC_BATCH_SIZE` | Blocks per sync batch | `100` |
+| `SYNC_INTERVAL` | Milliseconds between batches | `5000` |
 
 ### RPC Node Requirements
 

@@ -12,6 +12,8 @@ const healthRoutes = require('./routes/health');
 const balanceRoutes = require('./routes/balance');
 const transactionRoutes = require('./routes/transaction');
 const blockRoutes = require('./routes/block');
+const historyRoutes = require('./routes/history');
+const syncService = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,14 +45,16 @@ app.use('/api/epoch', epochRoutes);
 app.use('/api/balance', balanceRoutes);
 app.use('/api/transaction', transactionRoutes);
 app.use('/api/block', blockRoutes);
+app.use('/api/history', historyRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
     name: 'idena-lite-api',
-    version: '1.0.0',
-    description: 'Community-maintained Idena API',
+    version: '0.2.0-beta',
+    description: 'Current-state API for Idena with optional historical queries',
     endpoints: {
+      // Current state (real-time)
       health: '/api/health',
       identity: '/api/identity/:address',
       identities: '/api/identity?limit=100&offset=0',
@@ -59,7 +63,17 @@ app.get('/', (req, res) => {
       block: '/api/block/:heightOrHash',
       epoch: '/api/epoch/current',
       stake: '/api/identity/:address/stake',
+      // Historical (requires HISTORY_ENABLED=true)
+      historyStatus: '/api/history/status',
+      addressTransactions: '/api/history/address/:address/transactions',
+      historicalBlock: '/api/history/block/:height',
+      historicalTransaction: '/api/history/transaction/:hash',
+      // Documentation
       docs: '/api/docs',
+    },
+    features: {
+      currentState: true,
+      historicalQueries: process.env.HISTORY_ENABLED !== 'false',
     },
     documentation: 'https://github.com/idenacommunity/idena-lite-api',
     rpcNode: process.env.IDENA_RPC_URL || 'Not configured',
@@ -93,6 +107,14 @@ if (require.main === module) {
     console.log(`🚀 idena-lite-api running on port ${PORT}`);
     console.log(`📡 Connected to RPC: ${process.env.IDENA_RPC_URL || 'http://localhost:9009'}`);
     console.log(`💾 Redis: ${process.env.REDIS_URL || 'localhost:6379'}`);
+
+    // Start historical sync if enabled
+    if (process.env.HISTORY_ENABLED !== 'false') {
+      console.log(`📚 Historical sync: enabled`);
+      syncService.start();
+    } else {
+      console.log(`📚 Historical sync: disabled (set HISTORY_ENABLED=true to enable)`);
+    }
   });
 }
 
