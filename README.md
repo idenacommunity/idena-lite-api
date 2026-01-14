@@ -4,7 +4,7 @@
 [![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?logo=jest&logoColor=white)](https://github.com/idenacommunity/idena-lite-api)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://ghcr.io/idenacommunity/idena-lite-api)
 [![Development Status](https://img.shields.io/badge/Status-Beta-blue)](https://github.com/idenacommunity/idena-lite-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/idenacommunity/idena-lite-api?style=social)](https://github.com/idenacommunity/idena-lite-api/stargazers)
@@ -114,14 +114,31 @@ A **lightweight API** for Idena with two operation modes:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose installed
+- Docker installed
 - Access to an Idena RPC node (see [RPC Node Requirements](#rpc-node-requirements))
 
-### Deploy in 5 minutes
+### Option 1: Docker Pull (Fastest)
+
+```bash
+# Pull the image from GitHub Container Registry
+docker pull ghcr.io/idenacommunity/idena-lite-api:latest
+
+# Run the container
+docker run -d -p 3000:3000 \
+  -e IDENA_RPC_URL=http://your-node:9009 \
+  -e IDENA_API_KEY=your-api-key \
+  -e REDIS_ENABLED=false \
+  ghcr.io/idenacommunity/idena-lite-api:latest
+
+# Test it
+curl http://localhost:3000/api/health
+```
+
+### Option 2: Docker Compose (With Redis + History)
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/idena-community/idena-lite-api.git
+git clone https://github.com/idenacommunity/idena-lite-api.git
 cd idena-lite-api
 
 # 2. Configure environment
@@ -771,7 +788,19 @@ curl http://localhost:3000/api/epoch/current
 - **Quick prototyping**: Private RPC if available
 - **Production**: Own node (reliability + no dependencies)
 
-### Building Docker Image
+### Docker Images
+
+**Pre-built images** are available on GitHub Container Registry:
+
+```bash
+# Latest release
+docker pull ghcr.io/idenacommunity/idena-lite-api:latest
+
+# Specific version
+docker pull ghcr.io/idenacommunity/idena-lite-api:0.2.2-beta
+```
+
+**Build locally:**
 
 ```bash
 docker build -t idena-lite-api:latest .
@@ -822,6 +851,7 @@ Special thanks to:
 ---
 
 **⚡ Status**: Beta - Ready for Community Testing
-**🔄 Version**: 0.2.0-beta
+**🔄 Version**: 0.2.2-beta
+**🐳 Docker**: `ghcr.io/idenacommunity/idena-lite-api:latest`
 **👥 Maintainer**: Idena Community
 **✅ Test Coverage**: 97% (466 tests across 18 suites)
