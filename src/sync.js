@@ -454,8 +454,37 @@ class SyncService {
         historyDB.insertContractsBatch(contracts);
       }
 
-      // Batch insert contract calls
+      // Before inserting contract calls, ensure all referenced contracts exist
+      // This handles cases where contracts were deployed before our sync range
       if (contractCalls.length > 0) {
+        const uniqueContractAddresses = [...new Set(contractCalls.map(c => c.contractAddress))];
+        const missingContracts = [];
+
+        for (const addr of uniqueContractAddresses) {
+          const existing = historyDB.getContract(addr);
+          if (!existing) {
+            // Find the first call to this contract to get metadata
+            const firstCall = contractCalls.find(c => c.contractAddress === addr);
+            missingContracts.push({
+              address: addr,
+              deployTxHash: 'unknown', // Deployed before our sync range
+              deployer: 'unknown',
+              codeHash: null,
+              stake: '0',
+              state: 'active',
+              epoch: 0,
+              blockHeight: firstCall?.blockHeight || 0,
+              timestamp: firstCall?.timestamp || 0,
+            });
+          }
+        }
+
+        // Insert placeholder contracts for missing ones
+        if (missingContracts.length > 0) {
+          historyDB.insertContractsBatch(missingContracts);
+        }
+
+        // Now insert contract calls
         historyDB.insertContractCallsBatch(contractCalls);
       }
     } catch (error) {
