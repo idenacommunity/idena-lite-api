@@ -884,4 +884,267 @@ router.get('/identity/:address/validation/:epoch', (req, res) => {
   res.json({ result });
 });
 
+// ==========================================
+// Invite Endpoints
+// ==========================================
+
+/**
+ * @swagger
+ * /api/history/identity/{address}/invites:
+ *   get:
+ *     summary: Get invite history for an address
+ *     description: Returns all invites sent or received by an address
+ *     tags: [Invites]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^0x[a-fA-F0-9]{40}$'
+ *         description: Idena address
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [sent, received]
+ *         description: Filter by invite direction (sent or received)
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, activated, expired]
+ *         description: Filter by invite status
+ *       - in: query
+ *         name: epoch
+ *         schema:
+ *           type: integer
+ *         description: Filter by specific epoch
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Invite history
+ *       400:
+ *         description: Invalid address format
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/identity/:address/invites', (req, res) => {
+  const { address } = req.params;
+
+  if (!validateAddress(address)) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid address format',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  const epoch = req.query.epoch ? parseInt(req.query.epoch) : null;
+  const status = req.query.status || null;
+  const type = req.query.type || null;
+
+  const result = historyDB.getAddressInvites(address, { limit, offset, epoch, status, type });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/epoch/{epoch}/invites:
+ *   get:
+ *     summary: Get invites for a specific epoch
+ *     description: Returns all invites created in a specific epoch
+ *     tags: [Invites]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, activated, expired]
+ *         description: Filter by invite status
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Number of results per page
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Offset for pagination
+ *     responses:
+ *       200:
+ *         description: Epoch invites
+ *       400:
+ *         description: Invalid epoch number
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/epoch/:epoch/invites', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const offset = parseInt(req.query.offset) || 0;
+  const status = req.query.status || null;
+
+  const result = historyDB.getEpochInvites(epochNum, { limit, offset, status });
+  res.json(result);
+});
+
+/**
+ * @swagger
+ * /api/history/epoch/{epoch}/invites/summary:
+ *   get:
+ *     summary: Get invite summary for an epoch
+ *     description: Returns statistics about invites in a specific epoch
+ *     tags: [Invites]
+ *     parameters:
+ *       - in: path
+ *         name: epoch
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Epoch number
+ *     responses:
+ *       200:
+ *         description: Invite summary
+ *       400:
+ *         description: Invalid epoch number
+ *       404:
+ *         description: No invite data for this epoch
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/epoch/:epoch/invites/summary', (req, res) => {
+  const epochNum = parseInt(req.params.epoch);
+
+  if (isNaN(epochNum) || epochNum < 0) {
+    return res.status(400).json({
+      error: {
+        message: 'Invalid epoch number',
+        status: 400,
+      },
+    });
+  }
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const result = historyDB.getEpochInvitesSummary(epochNum);
+
+  if (!result) {
+    return res.status(404).json({
+      error: {
+        message: `No invite data for epoch ${epochNum}. It may not be synced yet.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result });
+});
+
+/**
+ * @swagger
+ * /api/history/invite/{hash}:
+ *   get:
+ *     summary: Get invite by hash
+ *     description: Returns details of a specific invite transaction
+ *     tags: [Invites]
+ *     parameters:
+ *       - in: path
+ *         name: hash
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Invite transaction hash
+ *     responses:
+ *       200:
+ *         description: Invite details
+ *       404:
+ *         description: Invite not found
+ *       503:
+ *         description: Historical database not available
+ */
+router.get('/invite/:hash', (req, res) => {
+  const { hash } = req.params;
+
+  if (!historyDB.enabled) {
+    return res.status(503).json({
+      error: {
+        message: 'Historical database not enabled',
+        status: 503,
+      },
+    });
+  }
+
+  const result = historyDB.getInvite(hash);
+
+  if (!result) {
+    return res.status(404).json({
+      error: {
+        message: `Invite ${hash} not found in historical data.`,
+        status: 404,
+      },
+    });
+  }
+
+  res.json({ result });
+});
+
 module.exports = router;

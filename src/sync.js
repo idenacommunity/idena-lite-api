@@ -180,6 +180,11 @@ class SyncService {
         await this._trackBalanceChangesFromTransactions(transactions, blocks);
       }
 
+      // Track invites from transactions
+      if (transactions.length > 0) {
+        await this._trackInvitesFromTransactions(transactions, blocks);
+      }
+
       // Detect epoch boundaries and handle them
       await this._detectEpochBoundaries(blocks);
 
@@ -274,6 +279,83 @@ class SyncService {
       }
     } catch (error) {
       console.error('Failed to track balance changes:', error.message);
+    }
+  }
+
+  /**
+   * Track invites from transactions
+   * Creates invite records for InviteTx and ActivationTx transactions
+   */
+  async _trackInvitesFromTransactions(transactions, blocks) {
+    try {
+      const invites = [];
+      const activations = [];
+      const blockMap = new Map(blocks.map(b => [b.height, b]));
+
+      // Invite-related transaction types
+      const inviteTypes = ['invite', 'InviteTx'];
+      const activationTypes = ['activation', 'ActivationTx'];
+
+      for (const tx of transactions) {
+        const block = blockMap.get(tx.blockHeight);
+        const timestamp = block?.timestamp || tx.timestamp;
+        const epoch = block?.epoch || 0;
+
+        // Check for invite transactions
+        const isInvite = inviteTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        if (isInvite && tx.from) {
+          invites.push({
+            hash: tx.hash,
+            inviter: tx.from,
+            invitee: null, // Will be filled when activation happens
+            epoch: epoch,
+            activationHash: null,
+            activationTxHash: null,
+            status: 'pending',
+            blockHeight: tx.blockHeight,
+            timestamp,
+          });
+        }
+
+        // Check for activation transactions
+        const isActivation = activationTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        if (isActivation && tx.from) {
+          // Store activation info to update corresponding invite
+          activations.push({
+            invitee: tx.from,
+            activationTxHash: tx.hash,
+            epoch: epoch,
+            timestamp,
+          });
+        }
+      }
+
+      // Batch insert new invites
+      if (invites.length > 0) {
+        historyDB.insertInvitesBatch(invites);
+      }
+
+      // Update invites with activation info
+      // Note: This is a simplified approach - in production, we'd need to
+      // match activations to specific invites using the invite key/code
+      for (const activation of activations) {
+        // Update any pending invite for this epoch as activated
+        // This is a best-effort match since we don't have the invite key
+        historyDB.updateInviteStatus(
+          null, // We don't have the exact hash
+          'activated',
+          activation.invitee,
+          activation.activationTxHash
+        );
+      }
+    } catch (error) {
+      console.error('Failed to track invites:', error.message);
     }
   }
 

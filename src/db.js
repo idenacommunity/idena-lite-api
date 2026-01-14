@@ -179,6 +179,20 @@ class HistoryDB {
         timestamp INTEGER NOT NULL
       );
 
+      -- Invites table (track invite transactions)
+      CREATE TABLE IF NOT EXISTS invites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hash TEXT UNIQUE NOT NULL,
+        inviter TEXT NOT NULL,
+        invitee TEXT,
+        epoch INTEGER NOT NULL,
+        activation_hash TEXT,
+        activation_tx_hash TEXT,
+        status TEXT DEFAULT 'pending',
+        block_height INTEGER,
+        timestamp INTEGER NOT NULL
+      );
+
       -- Indexes for efficient queries
       CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(LOWER(from_addr));
       CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(LOWER(to_addr));
@@ -202,6 +216,10 @@ class HistoryDB {
       CREATE INDEX IF NOT EXISTS idx_balance_changes_timestamp ON balance_changes(timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_penalties_addr ON penalties(LOWER(address));
       CREATE INDEX IF NOT EXISTS idx_penalties_epoch ON penalties(epoch);
+      CREATE INDEX IF NOT EXISTS idx_invites_inviter ON invites(LOWER(inviter));
+      CREATE INDEX IF NOT EXISTS idx_invites_invitee ON invites(LOWER(invitee));
+      CREATE INDEX IF NOT EXISTS idx_invites_epoch ON invites(epoch);
+      CREATE INDEX IF NOT EXISTS idx_invites_status ON invites(status);
     `);
   }
 
@@ -469,6 +487,7 @@ class HistoryDB {
     const validationResultCount = this.db.prepare('SELECT COUNT(*) as count FROM validation_results').get().count;
     const balanceChangeCount = this.db.prepare('SELECT COUNT(*) as count FROM balance_changes').get().count;
     const penaltyCount = this.db.prepare('SELECT COUNT(*) as count FROM penalties').get().count;
+    const inviteCount = this.db.prepare('SELECT COUNT(*) as count FROM invites').get().count;
 
     return {
       enabled: true,
@@ -480,6 +499,7 @@ class HistoryDB {
       validationResultCount,
       balanceChangeCount,
       penaltyCount,
+      inviteCount,
       blockRange: minBlock && maxBlock ? { min: minBlock, max: maxBlock } : null,
     };
   }
@@ -1607,6 +1627,351 @@ class HistoryDB {
       uniqueAddresses: row.unique_addresses,
       totalAmount: row.total_amount ? row.total_amount.toString() : '0',
       byReason,
+    };
+  }
+
+  // ==========================================
+  // Invite Methods
+  // ==========================================
+
+  /**
+   * Insert an invite
+   */
+  insertInvite(invite) {
+    if (!this.enabled || !this.db) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO invites (hash, inviter, invitee, epoch, activation_hash, activation_tx_hash, status, block_height, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      invite.hash,
+      invite.inviter,
+      invite.invitee || null,
+      invite.epoch,
+      invite.activationHash || null,
+      invite.activationTxHash || null,
+      invite.status || 'pending',
+      invite.blockHeight || null,
+      invite.timestamp
+    );
+  }
+
+  /**
+   * Batch insert invites
+   */
+  insertInvitesBatch(invites) {
+    if (!this.enabled || !this.db || !invites.length) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO invites (hash, inviter, invitee, epoch, activation_hash, activation_tx_hash, status, block_height, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((items) => {
+      for (const invite of items) {
+        stmt.run(
+          invite.hash,
+          invite.inviter,
+          invite.invitee || null,
+          invite.epoch,
+          invite.activationHash || null,
+          invite.activationTxHash || null,
+          invite.status || 'pending',
+          invite.blockHeight || null,
+          invite.timestamp
+        );
+      }
+    });
+
+    insertMany(invites);
+  }
+
+  /**
+   * Update invite status (e.g., when activated)
+   */
+  updateInviteStatus(hash, status, invitee = null, activationTxHash = null) {
+    if (!this.enabled || !this.db) return;
+
+    const updates = ['status = ?'];
+    const params = [status];
+
+    if (invitee) {
+      updates.push('invitee = ?');
+      params.push(invitee);
+    }
+
+    if (activationTxHash) {
+      updates.push('activation_tx_hash = ?');
+      params.push(activationTxHash);
+    }
+
+    params.push(hash);
+    this.db.prepare(`UPDATE invites SET ${updates.join(', ')} WHERE hash = ?`).run(...params);
+  }
+
+  /**
+   * Get invite by hash
+   */
+  getInvite(hash) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare('SELECT * FROM invites WHERE hash = ?').get(hash);
+    if (!row) return null;
+
+    return {
+      hash: row.hash,
+      inviter: row.inviter,
+      invitee: row.invitee,
+      epoch: row.epoch,
+      activationHash: row.activation_hash,
+      activationTxHash: row.activation_tx_hash,
+      status: row.status,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    };
+  }
+
+  /**
+   * Get invites sent by an address
+   */
+  getAddressInvitesSent(address, options = {}) {
+    if (!this.enabled || !this.db) return { data: [], total: 0 };
+
+    const { limit = 50, offset = 0, epoch = null, status = null } = options;
+
+    let whereClause = 'WHERE LOWER(inviter) = LOWER(?)';
+    const params = [address];
+
+    if (epoch !== null) {
+      whereClause += ' AND epoch = ?';
+      params.push(epoch);
+    }
+
+    if (status) {
+      whereClause += ' AND status = ?';
+      params.push(status);
+    }
+
+    const total = this.db.prepare(`SELECT COUNT(*) as count FROM invites ${whereClause}`).get(...params).count;
+
+    const data = this.db.prepare(`
+      SELECT * FROM invites
+      ${whereClause}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    return {
+      data: data.map(row => ({
+        hash: row.hash,
+        inviter: row.inviter,
+        invitee: row.invitee,
+        epoch: row.epoch,
+        activationHash: row.activation_hash,
+        activationTxHash: row.activation_tx_hash,
+        status: row.status,
+        blockHeight: row.block_height,
+        timestamp: row.timestamp,
+      })),
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  /**
+   * Get invites received by an address (where they are invitee)
+   */
+  getAddressInvitesReceived(address, options = {}) {
+    if (!this.enabled || !this.db) return { data: [], total: 0 };
+
+    const { limit = 50, offset = 0 } = options;
+
+    const total = this.db.prepare(`
+      SELECT COUNT(*) as count FROM invites WHERE LOWER(invitee) = LOWER(?)
+    `).get(address).count;
+
+    const data = this.db.prepare(`
+      SELECT * FROM invites
+      WHERE LOWER(invitee) = LOWER(?)
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(address, limit, offset);
+
+    return {
+      data: data.map(row => ({
+        hash: row.hash,
+        inviter: row.inviter,
+        invitee: row.invitee,
+        epoch: row.epoch,
+        activationHash: row.activation_hash,
+        activationTxHash: row.activation_tx_hash,
+        status: row.status,
+        blockHeight: row.block_height,
+        timestamp: row.timestamp,
+      })),
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  /**
+   * Get all invites for an address (sent and received)
+   */
+  getAddressInvites(address, options = {}) {
+    if (!this.enabled || !this.db) return { data: [], total: 0 };
+
+    const { limit = 50, offset = 0, epoch = null, status = null, type = null } = options;
+
+    let whereClause = 'WHERE (LOWER(inviter) = LOWER(?) OR LOWER(invitee) = LOWER(?))';
+    const params = [address, address];
+
+    if (epoch !== null) {
+      whereClause += ' AND epoch = ?';
+      params.push(epoch);
+    }
+
+    if (status) {
+      whereClause += ' AND status = ?';
+      params.push(status);
+    }
+
+    // Filter by type: 'sent' or 'received'
+    if (type === 'sent') {
+      whereClause = 'WHERE LOWER(inviter) = LOWER(?)';
+      params.length = 0;
+      params.push(address);
+      if (epoch !== null) {
+        whereClause += ' AND epoch = ?';
+        params.push(epoch);
+      }
+      if (status) {
+        whereClause += ' AND status = ?';
+        params.push(status);
+      }
+    } else if (type === 'received') {
+      whereClause = 'WHERE LOWER(invitee) = LOWER(?)';
+      params.length = 0;
+      params.push(address);
+      if (epoch !== null) {
+        whereClause += ' AND epoch = ?';
+        params.push(epoch);
+      }
+      if (status) {
+        whereClause += ' AND status = ?';
+        params.push(status);
+      }
+    }
+
+    const total = this.db.prepare(`SELECT COUNT(*) as count FROM invites ${whereClause}`).get(...params).count;
+
+    const data = this.db.prepare(`
+      SELECT *,
+        CASE WHEN LOWER(inviter) = LOWER(?) THEN 'sent' ELSE 'received' END as direction
+      FROM invites
+      ${whereClause}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(address, ...params, limit, offset);
+
+    return {
+      data: data.map(row => ({
+        hash: row.hash,
+        inviter: row.inviter,
+        invitee: row.invitee,
+        epoch: row.epoch,
+        activationHash: row.activation_hash,
+        activationTxHash: row.activation_tx_hash,
+        status: row.status,
+        blockHeight: row.block_height,
+        timestamp: row.timestamp,
+        direction: row.direction,
+      })),
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  /**
+   * Get invites for a specific epoch
+   */
+  getEpochInvites(epochNum, options = {}) {
+    if (!this.enabled || !this.db) return { data: [], total: 0 };
+
+    const { limit = 50, offset = 0, status = null } = options;
+
+    let whereClause = 'WHERE epoch = ?';
+    const params = [epochNum];
+
+    if (status) {
+      whereClause += ' AND status = ?';
+      params.push(status);
+    }
+
+    const total = this.db.prepare(`SELECT COUNT(*) as count FROM invites ${whereClause}`).get(...params).count;
+
+    const data = this.db.prepare(`
+      SELECT * FROM invites
+      ${whereClause}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    return {
+      data: data.map(row => ({
+        hash: row.hash,
+        inviter: row.inviter,
+        invitee: row.invitee,
+        epoch: row.epoch,
+        activationHash: row.activation_hash,
+        activationTxHash: row.activation_tx_hash,
+        status: row.status,
+        blockHeight: row.block_height,
+        timestamp: row.timestamp,
+      })),
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  /**
+   * Get invite statistics for an epoch
+   */
+  getEpochInvitesSummary(epochNum) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_invites,
+        COUNT(DISTINCT inviter) as unique_inviters,
+        SUM(CASE WHEN status = 'activated' THEN 1 ELSE 0 END) as activated_count,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+        SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired_count
+      FROM invites
+      WHERE epoch = ?
+    `).get(epochNum);
+
+    if (!row || row.total_invites === 0) return null;
+
+    return {
+      epoch: epochNum,
+      totalInvites: row.total_invites,
+      uniqueInviters: row.unique_inviters,
+      activated: row.activated_count,
+      pending: row.pending_count,
+      expired: row.expired_count,
+      activationRate: row.total_invites > 0
+        ? ((row.activated_count / row.total_invites) * 100).toFixed(2) + '%'
+        : '0%',
     };
   }
 

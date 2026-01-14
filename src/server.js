@@ -14,6 +14,7 @@ const transactionRoutes = require('./routes/transaction');
 const blockRoutes = require('./routes/block');
 const historyRoutes = require('./routes/history');
 const addressRoutes = require('./routes/address');
+const statsRoutes = require('./routes/stats');
 const syncService = require('./sync');
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/transaction', transactionRoutes);
 app.use('/api/block', blockRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/address', addressRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

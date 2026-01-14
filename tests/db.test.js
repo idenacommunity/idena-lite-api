@@ -1392,6 +1392,228 @@ describe('HistoryDB', () => {
       expect(stats.penaltyCount).toBe(1);
     });
   });
+
+  // ==========================================
+  // Phase 4: Invite Methods Tests
+  // ==========================================
+
+  describe('Invite Methods', () => {
+    const testInvite = {
+      hash: '0xinvite1',
+      inviter: '0xInviter1',
+      invitee: null,
+      epoch: 150,
+      activationHash: null,
+      activationTxHash: null,
+      status: 'pending',
+      blockHeight: 1000,
+      timestamp: 1704067200,
+    };
+
+    describe('insertInvite()', () => {
+      it('should insert an invite', () => {
+        db.insertInvite(testInvite);
+        const invite = db.getInvite('0xinvite1');
+        expect(invite).toBeDefined();
+        expect(invite.inviter.toLowerCase()).toBe('0xinviter1');
+        expect(invite.status).toBe('pending');
+      });
+
+      it('should replace on duplicate hash', () => {
+        db.insertInvite(testInvite);
+        db.insertInvite({ ...testInvite, status: 'activated' });
+        const invite = db.getInvite('0xinvite1');
+        expect(invite.status).toBe('activated');
+      });
+    });
+
+    describe('insertInvitesBatch()', () => {
+      it('should insert multiple invites', () => {
+        const invites = [
+          { ...testInvite, hash: '0xinvite1' },
+          { ...testInvite, hash: '0xinvite2', inviter: '0xInviter2' },
+          { ...testInvite, hash: '0xinvite3', inviter: '0xInviter3' },
+        ];
+        db.insertInvitesBatch(invites);
+
+        expect(db.getInvite('0xinvite1')).toBeDefined();
+        expect(db.getInvite('0xinvite2')).toBeDefined();
+        expect(db.getInvite('0xinvite3')).toBeDefined();
+      });
+
+      it('should handle empty array', () => {
+        expect(() => db.insertInvitesBatch([])).not.toThrow();
+      });
+    });
+
+    describe('updateInviteStatus()', () => {
+      it('should update invite status', () => {
+        db.insertInvite(testInvite);
+        db.updateInviteStatus('0xinvite1', 'activated', '0xNewInvitee', '0xActivationTx');
+
+        const invite = db.getInvite('0xinvite1');
+        expect(invite.status).toBe('activated');
+        expect(invite.invitee.toLowerCase()).toBe('0xnewinvitee');
+        expect(invite.activationTxHash.toLowerCase()).toBe('0xactivationtx');
+      });
+    });
+
+    describe('getInvite()', () => {
+      it('should return invite by hash', () => {
+        db.insertInvite(testInvite);
+        const invite = db.getInvite('0xinvite1');
+        expect(invite.hash).toBe('0xinvite1');
+        expect(invite.epoch).toBe(150);
+      });
+
+      it('should return null for non-existent invite', () => {
+        const invite = db.getInvite('0xnonexistent');
+        expect(invite).toBeNull();
+      });
+    });
+
+    describe('getAddressInvites()', () => {
+      beforeEach(() => {
+        // Insert test invites
+        db.insertInvitesBatch([
+          { ...testInvite, hash: '0xinvite1', inviter: '0xAddr1', invitee: null, status: 'pending' },
+          { ...testInvite, hash: '0xinvite2', inviter: '0xAddr1', invitee: '0xAddr2', status: 'activated' },
+          { ...testInvite, hash: '0xinvite3', inviter: '0xAddr3', invitee: '0xAddr1', status: 'activated' },
+          { ...testInvite, hash: '0xinvite4', inviter: '0xAddr4', invitee: null, status: 'expired', epoch: 149 },
+        ]);
+      });
+
+      it('should return all invites for an address', () => {
+        const result = db.getAddressInvites('0xAddr1');
+        expect(result.data.length).toBe(3);
+        expect(result.total).toBe(3);
+      });
+
+      it('should filter by type (sent)', () => {
+        const result = db.getAddressInvites('0xAddr1', { type: 'sent' });
+        expect(result.data.length).toBe(2);
+        expect(result.data.every(i => i.inviter.toLowerCase() === '0xaddr1')).toBe(true);
+      });
+
+      it('should filter by type (received)', () => {
+        const result = db.getAddressInvites('0xAddr1', { type: 'received' });
+        expect(result.data.length).toBe(1);
+        expect(result.data[0].invitee.toLowerCase()).toBe('0xaddr1');
+      });
+
+      it('should filter by status', () => {
+        const result = db.getAddressInvites('0xAddr1', { status: 'activated' });
+        expect(result.data.length).toBe(2);
+      });
+
+      it('should filter by epoch', () => {
+        const result = db.getAddressInvites('0xAddr4', { epoch: 149 });
+        expect(result.data.length).toBe(1);
+        expect(result.data[0].epoch).toBe(149);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getAddressInvites('0xAddr1', { limit: 2, offset: 0 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+    });
+
+    describe('getAddressInvitesSent()', () => {
+      it('should return only sent invites', () => {
+        db.insertInvitesBatch([
+          { ...testInvite, hash: '0xinvite1', inviter: '0xAddr1' },
+          { ...testInvite, hash: '0xinvite2', inviter: '0xAddr1' },
+          { ...testInvite, hash: '0xinvite3', inviter: '0xAddr2', invitee: '0xAddr1' },
+        ]);
+
+        const result = db.getAddressInvitesSent('0xAddr1');
+        expect(result.data.length).toBe(2);
+        expect(result.total).toBe(2);
+      });
+    });
+
+    describe('getAddressInvitesReceived()', () => {
+      it('should return only received invites', () => {
+        db.insertInvitesBatch([
+          { ...testInvite, hash: '0xinvite1', inviter: '0xAddr2', invitee: '0xAddr1' },
+          { ...testInvite, hash: '0xinvite2', inviter: '0xAddr3', invitee: '0xAddr1' },
+          { ...testInvite, hash: '0xinvite3', inviter: '0xAddr1', invitee: null },
+        ]);
+
+        const result = db.getAddressInvitesReceived('0xAddr1');
+        expect(result.data.length).toBe(2);
+        expect(result.total).toBe(2);
+      });
+    });
+
+    describe('getEpochInvites()', () => {
+      beforeEach(() => {
+        db.insertInvitesBatch([
+          { ...testInvite, hash: '0xinvite1', epoch: 150, status: 'pending' },
+          { ...testInvite, hash: '0xinvite2', epoch: 150, status: 'activated' },
+          { ...testInvite, hash: '0xinvite3', epoch: 150, status: 'activated' },
+          { ...testInvite, hash: '0xinvite4', epoch: 149, status: 'expired' },
+        ]);
+      });
+
+      it('should return invites for epoch', () => {
+        const result = db.getEpochInvites(150);
+        expect(result.data.length).toBe(3);
+        expect(result.total).toBe(3);
+      });
+
+      it('should filter by status', () => {
+        const result = db.getEpochInvites(150, { status: 'activated' });
+        expect(result.data.length).toBe(2);
+      });
+
+      it('should support pagination', () => {
+        const result = db.getEpochInvites(150, { limit: 2, offset: 0 });
+        expect(result.data.length).toBe(2);
+        expect(result.hasMore).toBe(true);
+      });
+    });
+
+    describe('getEpochInvitesSummary()', () => {
+      it('should return invite statistics for epoch', () => {
+        db.insertInvitesBatch([
+          { ...testInvite, hash: '0xinvite1', inviter: '0xAddr1', status: 'pending' },
+          { ...testInvite, hash: '0xinvite2', inviter: '0xAddr1', status: 'activated' },
+          { ...testInvite, hash: '0xinvite3', inviter: '0xAddr2', status: 'activated' },
+          { ...testInvite, hash: '0xinvite4', inviter: '0xAddr3', status: 'expired' },
+        ]);
+
+        const summary = db.getEpochInvitesSummary(150);
+        expect(summary.totalInvites).toBe(4);
+        expect(summary.uniqueInviters).toBe(3);
+        expect(summary.activated).toBe(2);
+        expect(summary.pending).toBe(1);
+        expect(summary.expired).toBe(1);
+        expect(summary.activationRate).toBe('50.00%');
+      });
+
+      it('should return null when no invites', () => {
+        const summary = db.getEpochInvitesSummary(999);
+        expect(summary).toBeNull();
+      });
+    });
+  });
+
+  describe('getStats() with Phase 4 tables', () => {
+    it('should include invite count', () => {
+      db.insertInvite({
+        hash: '0xinvite1',
+        inviter: '0xaddr1',
+        epoch: 150,
+        status: 'pending',
+        timestamp: 1704067200,
+      });
+
+      const stats = db.getStats();
+      expect(stats.inviteCount).toBe(1);
+    });
+  });
 });
 
 // Export the HistoryDB class for testing
