@@ -185,6 +185,11 @@ class SyncService {
         await this._trackInvitesFromTransactions(transactions, blocks);
       }
 
+      // Track contracts from transactions
+      if (transactions.length > 0) {
+        await this._trackContractsFromTransactions(transactions, blocks);
+      }
+
       // Detect epoch boundaries and handle them
       await this._detectEpochBoundaries(blocks);
 
@@ -357,6 +362,119 @@ class SyncService {
     } catch (error) {
       console.error('Failed to track invites:', error.message);
     }
+  }
+
+  /**
+   * Track contracts from transactions
+   * Creates contract and contract_call records for contract-related transactions
+   */
+  async _trackContractsFromTransactions(transactions, blocks) {
+    try {
+      const contracts = [];
+      const contractCalls = [];
+      const blockMap = new Map(blocks.map(b => [b.height, b]));
+
+      // Contract-related transaction types
+      const deployTypes = ['DeployContractTx', 'deploy_contract', 'deployContract'];
+      const callTypes = ['CallContractTx', 'call_contract', 'callContract'];
+      const terminateTypes = ['TerminateContractTx', 'terminate_contract', 'terminateContract'];
+
+      for (const tx of transactions) {
+        const block = blockMap.get(tx.blockHeight);
+        const timestamp = block?.timestamp || tx.timestamp;
+        const epoch = block?.epoch || 0;
+
+        // Check for contract deployment
+        const isDeploy = deployTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        if (isDeploy && tx.from) {
+          // For deploy, the contract address is typically in tx.to or derived from tx
+          const contractAddress = tx.to || tx.contractAddress || this._deriveContractAddress(tx.from, tx.nonce);
+
+          if (contractAddress) {
+            contracts.push({
+              address: contractAddress,
+              deployTxHash: tx.hash,
+              deployer: tx.from,
+              codeHash: tx.payload?.codeHash || null,
+              stake: tx.amount || '0',
+              state: 'active',
+              epoch: epoch,
+              blockHeight: tx.blockHeight,
+              timestamp,
+            });
+          }
+        }
+
+        // Check for contract calls
+        const isCall = callTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        if (isCall && tx.to) {
+          contractCalls.push({
+            txHash: tx.hash,
+            contractAddress: tx.to,
+            caller: tx.from,
+            method: tx.payload?.method || null,
+            amount: tx.amount || '0',
+            success: true, // We can't determine failure from tx alone
+            blockHeight: tx.blockHeight,
+            timestamp,
+          });
+        }
+
+        // Check for contract termination
+        const isTerminate = terminateTypes.some(t =>
+          tx.type?.toLowerCase().includes(t.toLowerCase())
+        );
+
+        if (isTerminate && tx.to) {
+          // Update contract state to terminated
+          historyDB.updateContractState(tx.to, 'terminated');
+
+          // Also log as a contract call
+          contractCalls.push({
+            txHash: tx.hash,
+            contractAddress: tx.to,
+            caller: tx.from,
+            method: 'terminate',
+            amount: tx.amount || '0',
+            success: true,
+            blockHeight: tx.blockHeight,
+            timestamp,
+          });
+        }
+      }
+
+      // Batch insert new contracts
+      if (contracts.length > 0) {
+        historyDB.insertContractsBatch(contracts);
+      }
+
+      // Batch insert contract calls
+      if (contractCalls.length > 0) {
+        historyDB.insertContractCallsBatch(contractCalls);
+      }
+    } catch (error) {
+      console.error('Failed to track contracts:', error.message);
+    }
+  }
+
+  /**
+   * Derive contract address from deployer and nonce
+   * This is a simplified version - actual derivation depends on Idena's implementation
+   */
+  _deriveContractAddress(deployer, nonce) {
+    // In Idena, contract address derivation may differ from Ethereum
+    // This is a placeholder - actual implementation would need to match Idena's algorithm
+    if (!deployer) return null;
+
+    // For now, return null and rely on tx.to containing the contract address
+    // In production, this should implement Idena's address derivation
+    return null;
   }
 
   /**

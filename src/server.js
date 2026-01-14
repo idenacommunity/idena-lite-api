@@ -15,6 +15,8 @@ const blockRoutes = require('./routes/block');
 const historyRoutes = require('./routes/history');
 const addressRoutes = require('./routes/address');
 const statsRoutes = require('./routes/stats');
+const searchRoutes = require('./routes/search');
+const contractRoutes = require('./routes/contract');
 const syncService = require('./sync');
 
 const app = express();
@@ -51,6 +53,8 @@ app.use('/api/block', blockRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/address', addressRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/contract', contractRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -73,6 +77,15 @@ app.get('/', (req, res) => {
       addressTransactions: '/api/history/address/:address/transactions',
       historicalBlock: '/api/history/block/:height',
       historicalTransaction: '/api/history/transaction/:hash',
+      // Search (requires HISTORY_ENABLED=true)
+      search: '/api/search?q=0x...',
+      searchAddresses: '/api/search/addresses?prefix=0x...',
+      searchTransactions: '/api/search/transactions?prefix=0x...',
+      // Contracts (requires HISTORY_ENABLED=true)
+      contracts: '/api/contract',
+      contract: '/api/contract/:address',
+      contractCalls: '/api/contract/:address/calls',
+      contractStats: '/api/contract/stats',
       // Documentation
       docs: '/api/docs',
     },

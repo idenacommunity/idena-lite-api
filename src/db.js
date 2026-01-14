@@ -193,6 +193,50 @@ class HistoryDB {
         timestamp INTEGER NOT NULL
       );
 
+      -- Contracts table (deployed smart contracts)
+      CREATE TABLE IF NOT EXISTS contracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        address TEXT UNIQUE NOT NULL,
+        deploy_tx_hash TEXT NOT NULL,
+        deployer TEXT NOT NULL,
+        code_hash TEXT,
+        stake TEXT DEFAULT '0',
+        state TEXT DEFAULT 'active',
+        epoch INTEGER NOT NULL,
+        block_height INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL
+      );
+
+      -- Contract calls table (contract interactions)
+      CREATE TABLE IF NOT EXISTS contract_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tx_hash TEXT NOT NULL,
+        contract_address TEXT NOT NULL,
+        caller TEXT NOT NULL,
+        method TEXT,
+        amount TEXT DEFAULT '0',
+        success INTEGER DEFAULT 1,
+        block_height INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (contract_address) REFERENCES contracts(address)
+      );
+
+      -- FTS5 virtual table for full-text search on addresses
+      CREATE VIRTUAL TABLE IF NOT EXISTS search_addresses USING fts5(
+        address,
+        content='',
+        tokenize='porter'
+      );
+
+      -- FTS5 virtual table for full-text search on transaction hashes
+      CREATE VIRTUAL TABLE IF NOT EXISTS search_transactions USING fts5(
+        hash,
+        from_addr,
+        to_addr,
+        content='',
+        tokenize='porter'
+      );
+
       -- Indexes for efficient queries
       CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(LOWER(from_addr));
       CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(LOWER(to_addr));
@@ -220,6 +264,13 @@ class HistoryDB {
       CREATE INDEX IF NOT EXISTS idx_invites_invitee ON invites(LOWER(invitee));
       CREATE INDEX IF NOT EXISTS idx_invites_epoch ON invites(epoch);
       CREATE INDEX IF NOT EXISTS idx_invites_status ON invites(status);
+      CREATE INDEX IF NOT EXISTS idx_contracts_deployer ON contracts(LOWER(deployer));
+      CREATE INDEX IF NOT EXISTS idx_contracts_epoch ON contracts(epoch);
+      CREATE INDEX IF NOT EXISTS idx_contracts_state ON contracts(state);
+      CREATE INDEX IF NOT EXISTS idx_contract_calls_contract ON contract_calls(LOWER(contract_address));
+      CREATE INDEX IF NOT EXISTS idx_contract_calls_caller ON contract_calls(LOWER(caller));
+      CREATE INDEX IF NOT EXISTS idx_contract_calls_block ON contract_calls(block_height);
+      CREATE INDEX IF NOT EXISTS idx_contract_calls_timestamp ON contract_calls(timestamp DESC);
     `);
   }
 
@@ -488,6 +539,8 @@ class HistoryDB {
     const balanceChangeCount = this.db.prepare('SELECT COUNT(*) as count FROM balance_changes').get().count;
     const penaltyCount = this.db.prepare('SELECT COUNT(*) as count FROM penalties').get().count;
     const inviteCount = this.db.prepare('SELECT COUNT(*) as count FROM invites').get().count;
+    const contractCount = this.db.prepare('SELECT COUNT(*) as count FROM contracts').get().count;
+    const contractCallCount = this.db.prepare('SELECT COUNT(*) as count FROM contract_calls').get().count;
 
     return {
       enabled: true,
@@ -500,6 +553,8 @@ class HistoryDB {
       balanceChangeCount,
       penaltyCount,
       inviteCount,
+      contractCount,
+      contractCallCount,
       blockRange: minBlock && maxBlock ? { min: minBlock, max: maxBlock } : null,
     };
   }
@@ -1972,6 +2027,603 @@ class HistoryDB {
       activationRate: row.total_invites > 0
         ? ((row.activated_count / row.total_invites) * 100).toFixed(2) + '%'
         : '0%',
+    };
+  }
+
+  // ==========================================
+  // Search Methods (FTS5)
+  // ==========================================
+
+  /**
+   * Add address to search index
+   */
+  indexAddress(address) {
+    if (!this.enabled || !this.db) return;
+
+    try {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO search_addresses(address) VALUES (?)
+      `).run(address.toLowerCase());
+    } catch {
+      // Ignore FTS errors
+    }
+  }
+
+  /**
+   * Add transaction to search index
+   */
+  indexTransaction(tx) {
+    if (!this.enabled || !this.db) return;
+
+    try {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO search_transactions(hash, from_addr, to_addr) VALUES (?, ?, ?)
+      `).run(tx.hash, tx.from?.toLowerCase() || '', tx.to?.toLowerCase() || '');
+    } catch {
+      // Ignore FTS errors
+    }
+  }
+
+  /**
+   * Search across addresses, transactions, and blocks
+   * @param {string} query - Search query (address prefix, tx hash prefix, block height)
+   * @param {object} options - Search options
+   * @returns {object} - Search results grouped by type
+   */
+  search(query, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { addresses: [], transactions: [], blocks: [], total: 0 };
+    }
+
+    const { limit = 20 } = options;
+    const results = {
+      addresses: [],
+      transactions: [],
+      blocks: [],
+      total: 0,
+    };
+
+    const queryLower = query.toLowerCase().trim();
+
+    // If query looks like a block height (numeric), search blocks
+    if (/^\d+$/.test(query)) {
+      const blockHeight = parseInt(query, 10);
+      const block = this.getBlock(blockHeight);
+      if (block) {
+        results.blocks.push(block);
+        results.total++;
+      }
+    }
+
+    // Search for exact address match first
+    if (queryLower.startsWith('0x')) {
+      // Exact transaction hash match
+      const tx = this.getTransaction(queryLower);
+      if (tx) {
+        results.transactions.push(tx);
+        results.total++;
+      }
+
+      // Address prefix search in transactions
+      const addressMatches = this.db.prepare(`
+        SELECT DISTINCT address FROM (
+          SELECT from_addr as address FROM transactions WHERE LOWER(from_addr) LIKE ?
+          UNION
+          SELECT to_addr as address FROM transactions WHERE LOWER(to_addr) LIKE ?
+        ) ORDER BY address LIMIT ?
+      `).all(queryLower + '%', queryLower + '%', limit);
+
+      for (const row of addressMatches) {
+        if (row.address) {
+          results.addresses.push({ address: row.address });
+          results.total++;
+        }
+      }
+
+      // Transaction hash prefix search
+      const txMatches = this.db.prepare(`
+        SELECT t.*, b.epoch FROM transactions t
+        JOIN blocks b ON b.height = t.block_height
+        WHERE LOWER(t.hash) LIKE ?
+        ORDER BY t.timestamp DESC
+        LIMIT ?
+      `).all(queryLower + '%', limit);
+
+      for (const row of txMatches) {
+        if (!results.transactions.find(t => t.hash === row.hash)) {
+          results.transactions.push({
+            hash: row.hash,
+            blockHeight: row.block_height,
+            epoch: row.epoch,
+            type: row.type,
+            from: row.from_addr,
+            to: row.to_addr,
+            amount: row.amount,
+            timestamp: row.timestamp,
+          });
+          results.total++;
+        }
+      }
+
+      // Block hash prefix search
+      const blockMatches = this.db.prepare(`
+        SELECT * FROM blocks WHERE LOWER(hash) LIKE ? ORDER BY height DESC LIMIT ?
+      `).all(queryLower + '%', limit);
+
+      for (const row of blockMatches) {
+        results.blocks.push({
+          height: row.height,
+          hash: row.hash,
+          timestamp: row.timestamp,
+          epoch: row.epoch,
+          proposer: row.proposer,
+          txCount: row.tx_count,
+        });
+        results.total++;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Search addresses by prefix
+   */
+  searchAddresses(prefix, limit = 20) {
+    if (!this.enabled || !this.db) return [];
+
+    const rows = this.db.prepare(`
+      SELECT DISTINCT address FROM (
+        SELECT from_addr as address FROM transactions WHERE LOWER(from_addr) LIKE ?
+        UNION
+        SELECT to_addr as address FROM transactions WHERE LOWER(to_addr) LIKE ?
+        UNION
+        SELECT address FROM identity_states WHERE LOWER(address) LIKE ?
+      ) WHERE address IS NOT NULL
+      ORDER BY address
+      LIMIT ?
+    `).all(prefix.toLowerCase() + '%', prefix.toLowerCase() + '%', prefix.toLowerCase() + '%', limit);
+
+    return rows.map(r => r.address);
+  }
+
+  /**
+   * Search transactions by hash prefix
+   */
+  searchTransactions(prefix, limit = 20) {
+    if (!this.enabled || !this.db) return [];
+
+    const rows = this.db.prepare(`
+      SELECT t.*, b.epoch FROM transactions t
+      JOIN blocks b ON b.height = t.block_height
+      WHERE LOWER(t.hash) LIKE ?
+      ORDER BY t.timestamp DESC
+      LIMIT ?
+    `).all(prefix.toLowerCase() + '%', limit);
+
+    return rows.map(row => ({
+      hash: row.hash,
+      blockHeight: row.block_height,
+      epoch: row.epoch,
+      type: row.type,
+      from: row.from_addr,
+      to: row.to_addr,
+      amount: row.amount,
+      timestamp: row.timestamp,
+    }));
+  }
+
+  /**
+   * Search blocks by hash prefix or height
+   */
+  searchBlocks(query, limit = 20) {
+    if (!this.enabled || !this.db) return [];
+
+    // If numeric, search by height
+    if (/^\d+$/.test(query)) {
+      const rows = this.db.prepare(`
+        SELECT * FROM blocks WHERE CAST(height AS TEXT) LIKE ? ORDER BY height DESC LIMIT ?
+      `).all(query + '%', limit);
+
+      return rows.map(row => ({
+        height: row.height,
+        hash: row.hash,
+        timestamp: row.timestamp,
+        epoch: row.epoch,
+        proposer: row.proposer,
+        txCount: row.tx_count,
+      }));
+    }
+
+    // Search by hash prefix
+    const rows = this.db.prepare(`
+      SELECT * FROM blocks WHERE LOWER(hash) LIKE ? ORDER BY height DESC LIMIT ?
+    `).all(query.toLowerCase() + '%', limit);
+
+    return rows.map(row => ({
+      height: row.height,
+      hash: row.hash,
+      timestamp: row.timestamp,
+      epoch: row.epoch,
+      proposer: row.proposer,
+      txCount: row.tx_count,
+    }));
+  }
+
+  // ==========================================
+  // Contract Methods
+  // ==========================================
+
+  /**
+   * Insert a deployed contract
+   */
+  insertContract(contract) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO contracts (
+        address, deploy_tx_hash, deployer, code_hash, stake, state, epoch, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      contract.address,
+      contract.deployTxHash,
+      contract.deployer,
+      contract.codeHash || null,
+      contract.stake || '0',
+      contract.state || 'active',
+      contract.epoch,
+      contract.blockHeight,
+      contract.timestamp
+    );
+  }
+
+  /**
+   * Batch insert contracts
+   */
+  insertContractsBatch(contracts) {
+    if (!this.enabled || !this.db || !contracts.length) return;
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO contracts (
+        address, deploy_tx_hash, deployer, code_hash, stake, state, epoch, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((items) => {
+      for (const c of items) {
+        stmt.run(
+          c.address,
+          c.deployTxHash,
+          c.deployer,
+          c.codeHash || null,
+          c.stake || '0',
+          c.state || 'active',
+          c.epoch,
+          c.blockHeight,
+          c.timestamp
+        );
+      }
+    });
+
+    insertMany(contracts);
+  }
+
+  /**
+   * Insert a contract call
+   */
+  insertContractCall(call) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      INSERT INTO contract_calls (
+        tx_hash, contract_address, caller, method, amount, success, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      call.txHash,
+      call.contractAddress,
+      call.caller,
+      call.method || null,
+      call.amount || '0',
+      call.success !== false ? 1 : 0,
+      call.blockHeight,
+      call.timestamp
+    );
+  }
+
+  /**
+   * Batch insert contract calls
+   */
+  insertContractCallsBatch(calls) {
+    if (!this.enabled || !this.db || !calls.length) return;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO contract_calls (
+        tx_hash, contract_address, caller, method, amount, success, block_height, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((items) => {
+      for (const c of items) {
+        stmt.run(
+          c.txHash,
+          c.contractAddress,
+          c.caller,
+          c.method || null,
+          c.amount || '0',
+          c.success !== false ? 1 : 0,
+          c.blockHeight,
+          c.timestamp
+        );
+      }
+    });
+
+    insertMany(calls);
+  }
+
+  /**
+   * Update contract state
+   */
+  updateContractState(address, state) {
+    if (!this.enabled || !this.db) return;
+
+    this.db.prepare(`
+      UPDATE contracts SET state = ? WHERE LOWER(address) = LOWER(?)
+    `).run(state, address);
+  }
+
+  /**
+   * Get contract by address
+   */
+  getContract(address) {
+    if (!this.enabled || !this.db) return null;
+
+    const row = this.db.prepare(`
+      SELECT * FROM contracts WHERE LOWER(address) = LOWER(?)
+    `).get(address);
+
+    if (!row) return null;
+
+    return {
+      address: row.address,
+      deployTxHash: row.deploy_tx_hash,
+      deployer: row.deployer,
+      codeHash: row.code_hash,
+      stake: row.stake,
+      state: row.state,
+      epoch: row.epoch,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    };
+  }
+
+  /**
+   * Get all contracts (paginated)
+   */
+  getContracts(options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, state = null, deployer = null } = options;
+
+    let whereClause = '1=1';
+    const params = [];
+
+    if (state) {
+      whereClause += ' AND state = ?';
+      params.push(state);
+    }
+
+    if (deployer) {
+      whereClause += ' AND LOWER(deployer) = LOWER(?)';
+      params.push(deployer);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(*) as count FROM contracts WHERE ${whereClause}`
+    ).get(...params).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM contracts
+      WHERE ${whereClause}
+      ORDER BY block_height DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      address: row.address,
+      deployTxHash: row.deploy_tx_hash,
+      deployer: row.deployer,
+      codeHash: row.code_hash,
+      stake: row.stake,
+      state: row.state,
+      epoch: row.epoch,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get contracts deployed by an address
+   */
+  getContractsByDeployer(deployer, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0 } = options;
+
+    const total = this.db.prepare(
+      'SELECT COUNT(*) as count FROM contracts WHERE LOWER(deployer) = LOWER(?)'
+    ).get(deployer).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM contracts
+      WHERE LOWER(deployer) = LOWER(?)
+      ORDER BY block_height DESC
+      LIMIT ? OFFSET ?
+    `).all(deployer, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      address: row.address,
+      deployTxHash: row.deploy_tx_hash,
+      deployer: row.deployer,
+      codeHash: row.code_hash,
+      stake: row.stake,
+      state: row.state,
+      epoch: row.epoch,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get contract calls for a contract (paginated)
+   */
+  getContractCalls(contractAddress, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0, method = null, caller = null } = options;
+
+    let whereClause = 'LOWER(contract_address) = LOWER(?)';
+    const params = [contractAddress];
+
+    if (method) {
+      whereClause += ' AND method = ?';
+      params.push(method);
+    }
+
+    if (caller) {
+      whereClause += ' AND LOWER(caller) = LOWER(?)';
+      params.push(caller);
+    }
+
+    const total = this.db.prepare(
+      `SELECT COUNT(*) as count FROM contract_calls WHERE ${whereClause}`
+    ).get(...params).count;
+
+    const rows = this.db.prepare(`
+      SELECT * FROM contract_calls
+      WHERE ${whereClause}
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      txHash: row.tx_hash,
+      contractAddress: row.contract_address,
+      caller: row.caller,
+      method: row.method,
+      amount: row.amount,
+      success: row.success === 1,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get contract calls made by an address
+   */
+  getContractCallsByAddress(address, options = {}) {
+    if (!this.enabled || !this.db) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const { limit = 50, offset = 0 } = options;
+
+    const total = this.db.prepare(
+      'SELECT COUNT(*) as count FROM contract_calls WHERE LOWER(caller) = LOWER(?)'
+    ).get(address).count;
+
+    const rows = this.db.prepare(`
+      SELECT cc.*, c.deployer, c.state as contract_state
+      FROM contract_calls cc
+      LEFT JOIN contracts c ON LOWER(c.address) = LOWER(cc.contract_address)
+      WHERE LOWER(cc.caller) = LOWER(?)
+      ORDER BY cc.timestamp DESC
+      LIMIT ? OFFSET ?
+    `).all(address, limit + 1, offset);
+
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(row => ({
+      txHash: row.tx_hash,
+      contractAddress: row.contract_address,
+      caller: row.caller,
+      method: row.method,
+      amount: row.amount,
+      success: row.success === 1,
+      blockHeight: row.block_height,
+      timestamp: row.timestamp,
+      contractDeployer: row.deployer,
+      contractState: row.contract_state,
+    }));
+
+    return { data, total, limit, offset, hasMore };
+  }
+
+  /**
+   * Get contract summary statistics
+   */
+  getContractStats() {
+    if (!this.enabled || !this.db) return null;
+
+    const stats = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_contracts,
+        SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_contracts,
+        SUM(CASE WHEN state = 'terminated' THEN 1 ELSE 0 END) as terminated_contracts,
+        COUNT(DISTINCT deployer) as unique_deployers,
+        SUM(CAST(stake AS REAL)) as total_stake
+      FROM contracts
+    `).get();
+
+    const callStats = this.db.prepare(`
+      SELECT
+        COUNT(*) as total_calls,
+        COUNT(DISTINCT caller) as unique_callers,
+        COUNT(DISTINCT contract_address) as contracts_called,
+        SUM(CAST(amount AS REAL)) as total_amount
+      FROM contract_calls
+    `).get();
+
+    // Top contracts by call count
+    const topContracts = this.db.prepare(`
+      SELECT contract_address, COUNT(*) as call_count
+      FROM contract_calls
+      GROUP BY contract_address
+      ORDER BY call_count DESC
+      LIMIT 10
+    `).all();
+
+    return {
+      contracts: {
+        total: stats.total_contracts,
+        active: stats.active_contracts,
+        terminated: stats.terminated_contracts,
+        uniqueDeployers: stats.unique_deployers,
+        totalStake: stats.total_stake ? stats.total_stake.toString() : '0',
+      },
+      calls: {
+        total: callStats.total_calls,
+        uniqueCallers: callStats.unique_callers,
+        contractsCalled: callStats.contracts_called,
+        totalAmount: callStats.total_amount ? callStats.total_amount.toString() : '0',
+      },
+      topContracts: topContracts.map(c => ({
+        address: c.contract_address,
+        callCount: c.call_count,
+      })),
     };
   }
 
