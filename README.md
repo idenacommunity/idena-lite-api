@@ -24,8 +24,8 @@ A fast API for Idena with **real-time queries** and **optional historical data s
 
 **This project is in beta stage - feature complete with comprehensive testing.**
 
-- ✅ **97% test coverage** - 438 tests across 16 test suites
-- ✅ **API complete** - 40+ endpoints implemented and documented
+- ✅ **97% test coverage** - 466 tests across 18 test suites
+- ✅ **API complete** - 50+ endpoints implemented and documented
 - ✅ **Error handling** - Comprehensive error responses
 - 🔄 **Beta stage** - Ready for community testing
 - ⚠️ **Needs production validation** - Not yet battle-tested at scale
@@ -41,11 +41,13 @@ A fast API for Idena with **real-time queries** and **optional historical data s
 - ✅ **Balance change tracking** - Full balance history (tx_in, tx_out, rewards, penalties)
 - ✅ **Invite tracking** - Sent/received invites, activation status
 - ✅ **Network statistics** - Online count, coin supply, identity breakdown
+- ✅ **Full-text search** - Search addresses, transactions, blocks
+- ✅ **Smart contract tracking** - Deployments, calls, statistics
 - ✅ Redis caching with graceful degradation
 - ✅ RPC client with error handling
 - ✅ Docker deployment
 - ✅ Swagger API documentation
-- ✅ Comprehensive test suite (438 tests)
+- ✅ Comprehensive test suite (466 tests)
 
 ### What Needs Work
 - ⚠️ Production deployment validation
@@ -90,8 +92,8 @@ A **lightweight API** for Idena with two operation modes:
 | Invite tracking | ❌ | ✅ | ✅ |
 | Network statistics | ❌ | ✅ | ✅ |
 | Penalty tracking | ❌ | ✅ | ✅ |
-| Full-text search | ❌ | ❌ | ✅ |
-| Smart contract queries | ❌ | ❌ | ✅ |
+| Full-text search | ❌ | ✅ | ✅ |
+| Smart contract queries | ❌ | ✅ | ✅ |
 | Flip content | ❌ | ❌ | ✅ |
 | **Deployment time** | Minutes | 2-4 hours | 100+ hours |
 | **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
@@ -104,8 +106,6 @@ A **lightweight API** for Idena with two operation modes:
 
 **idena-lite-api CANNOT provide:**
 
-- ❌ **Full-text search** - Search across addresses, transactions, etc.
-- ❌ **Smart contract data** - Contract state, calls, deployments
 - ❌ **Flip content** - IPFS flip images and answers
 - ❌ **Complex analytics** - Advanced aggregations and trends
 
@@ -295,6 +295,42 @@ GET /api/stats/epoch/:epoch
 ```bash
 # Get invite by hash
 GET /api/history/invite/:hash
+```
+
+#### Search Endpoints
+```bash
+# Search across all types (addresses, transactions, blocks)
+GET /api/search?q=0x1234&limit=10
+
+# Search addresses by prefix
+GET /api/search/addresses?prefix=0x1234&limit=20
+
+# Search transactions by hash prefix
+GET /api/search/transactions?prefix=0xabcd&limit=20
+
+# Search blocks by height or hash prefix
+GET /api/search/blocks?q=12345&limit=20
+```
+
+#### Smart Contract Endpoints
+```bash
+# List all contracts (paginated)
+GET /api/contract?limit=50&offset=0&state=active&deployer=0x...
+
+# Get contract statistics
+GET /api/contract/stats
+
+# Get contract by address
+GET /api/contract/0x1234...
+
+# Get contract calls (paginated)
+GET /api/contract/0x1234.../calls?limit=50&method=transfer&caller=0x...
+
+# Get contracts by deployer
+GET /api/contract/deployer/0x1234...
+
+# Get contract calls by caller
+GET /api/contract/caller/0x1234...
 ```
 
 ## 📖 API Documentation
@@ -655,6 +691,8 @@ tests/
 ├── stats.test.js       # Network statistics endpoint tests
 ├── db.test.js          # SQLite database unit tests
 ├── sync.test.js        # Background sync service tests
+├── search.test.js      # Search endpoint tests
+├── contract.test.js    # Contract endpoint tests
 ├── rateLimit.test.js   # Rate limiting tests
 └── integration.test.js # End-to-end API tests
 ```
@@ -786,4 +824,4 @@ Special thanks to:
 **⚡ Status**: Beta - Ready for Community Testing
 **🔄 Version**: 0.2.0-beta
 **👥 Maintainer**: Idena Community
-**✅ Test Coverage**: 97% (438 tests across 16 suites)
+**✅ Test Coverage**: 97% (466 tests across 18 suites)
