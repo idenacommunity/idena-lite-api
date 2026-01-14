@@ -15,8 +15,9 @@ class Cache {
 
     try {
       const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+      const redisPassword = process.env.REDIS_PASSWORD;
 
-      this.client = redis.createClient({
+      const clientOptions = {
         url: redisUrl,
         socket: {
           reconnectStrategy: (retries) => {
@@ -27,7 +28,14 @@ class Cache {
             return retries * 100;
           },
         },
-      });
+      };
+
+      // Add password if provided separately (not in URL)
+      if (redisPassword && !redisUrl.includes('@')) {
+        clientOptions.password = redisPassword;
+      }
+
+      this.client = redis.createClient(clientOptions);
 
       this.client.on('error', (err) => {
         console.error('Redis error:', err);
