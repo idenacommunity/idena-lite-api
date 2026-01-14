@@ -210,12 +210,30 @@ Access the documentation at `http://localhost:3000/api/docs` when running locall
 | `IDENA_RPC_URL` | Idena node RPC endpoint | `http://localhost:9009` |
 | `IDENA_API_KEY` | Optional API key for your node | - |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
+| `REDIS_PASSWORD` | Redis password (if not in URL) | - |
 | `REDIS_ENABLED` | Enable/disable caching | `true` |
 | `CACHE_TTL` | Cache duration in seconds | `300` (5 min) |
 | `HISTORY_ENABLED` | Enable historical sync to SQLite | `true` |
 | `SQLITE_PATH` | Path to SQLite database file | `./data/history.db` |
-| `SYNC_BATCH_SIZE` | Blocks per sync batch | `100` |
-| `SYNC_INTERVAL` | Milliseconds between batches | `5000` |
+| `SYNC_BATCH_SIZE` | Blocks per sync batch | `500` |
+| `SYNC_INTERVAL` | Milliseconds between batches | `1000` |
+| `SYNC_CONCURRENCY` | Parallel RPC requests | `20` |
+
+### Sync Performance Tuning
+
+The historical sync uses parallel fetching for optimal performance:
+
+| Setting | Conservative | Default | Aggressive |
+|---------|-------------|---------|------------|
+| `SYNC_BATCH_SIZE` | 100 | 500 | 1000 |
+| `SYNC_INTERVAL` | 5000 | 1000 | 500 |
+| `SYNC_CONCURRENCY` | 5 | 20 | 50 |
+
+**Tuning tips:**
+- **Slow RPC/limited resources**: Use conservative settings
+- **Fast local node**: Use aggressive settings
+- **Monitor logs**: Watch for RPC timeout errors and adjust accordingly
+- **Initial sync**: Higher concurrency speeds up catch-up significantly
 
 ### RPC Node Requirements
 
@@ -644,6 +662,6 @@ Special thanks to:
 ---
 
 **⚡ Status**: Beta - Ready for Community Testing
-**🔄 Version**: 0.1.0-beta
+**🔄 Version**: 0.2.0-beta
 **👥 Maintainer**: Idena Community
 **✅ Test Coverage**: 100% (statements, branches, functions, lines)
