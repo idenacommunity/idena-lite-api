@@ -13,8 +13,9 @@ class SyncService {
     this.rpc = new IdenaRPC();
     this.isRunning = false;
     this.shouldStop = false;
-    this.batchSize = parseInt(process.env.SYNC_BATCH_SIZE) || 100;
-    this.syncInterval = parseInt(process.env.SYNC_INTERVAL) || 5000; // ms between batches
+    this.batchSize = parseInt(process.env.SYNC_BATCH_SIZE) || 500;
+    this.syncInterval = parseInt(process.env.SYNC_INTERVAL) || 1000; // ms between batches
+    this.concurrency = parseInt(process.env.SYNC_CONCURRENCY) || 20; // parallel requests
     this.enabled = process.env.HISTORY_ENABLED !== 'false';
   }
 
@@ -131,35 +132,38 @@ class SyncService {
 
     console.log(`Syncing blocks ${startBlock} to ${endBlock} (${endBlock - startBlock + 1} blocks)`);
 
-    // Fetch and process blocks
+    // Fetch blocks in parallel with concurrency limit
     const blocks = [];
     const transactions = [];
+    const heights = [];
 
-    for (let height = startBlock; height <= endBlock; height++) {
-      try {
-        const block = await this._fetchBlock(height);
+    for (let h = startBlock; h <= endBlock; h++) {
+      heights.push(h);
+    }
+
+    // Process blocks in chunks with concurrency limit
+    for (let i = 0; i < heights.length; i += this.concurrency) {
+      const chunk = heights.slice(i, i + this.concurrency);
+      const blockPromises = chunk.map(height => this._fetchBlock(height));
+      const fetchedBlocks = await Promise.all(blockPromises);
+
+      for (const block of fetchedBlocks) {
         if (block) {
           blocks.push(block);
 
-          // Fetch transactions for this block
+          // Fetch transactions in parallel for this block
           if (block.transactions && block.transactions.length > 0) {
-            for (let i = 0; i < block.transactions.length; i++) {
-              const txHash = block.transactions[i];
-              const tx = await this._fetchTransaction(txHash, height, block.timestamp, i);
+            const txPromises = block.transactions.map((txHash, idx) =>
+              this._fetchTransaction(txHash, block.height, block.timestamp, idx)
+            );
+            const fetchedTxs = await Promise.all(txPromises);
+            for (const tx of fetchedTxs) {
               if (tx) {
                 transactions.push(tx);
               }
             }
           }
         }
-      } catch (error) {
-        console.error(`Failed to fetch block ${height}:`, error.message);
-        // Continue with next block
-      }
-
-      // Small delay between blocks to avoid overwhelming RPC
-      if (height % 10 === 0) {
-        await this._sleep(50);
       }
     }
 
