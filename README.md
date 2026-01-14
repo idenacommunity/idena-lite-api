@@ -1,7 +1,7 @@
 # idena-lite-api
 
 [![CI](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml/badge.svg)](https://github.com/idenacommunity/idena-lite-api/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/Coverage-96%25-brightgreen?logo=jest&logoColor=white)](https://github.com/idenacommunity/idena-lite-api)
+[![Coverage](https://img.shields.io/badge/Coverage-97%25-brightgreen?logo=jest&logoColor=white)](https://github.com/idenacommunity/idena-lite-api)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com)
@@ -24,8 +24,8 @@ A fast API for Idena with **real-time queries** and **optional historical data s
 
 **This project is in beta stage - feature complete with comprehensive testing.**
 
-- ✅ **96% test coverage** - 215 tests covering all code paths
-- ✅ **API complete** - All endpoints implemented and documented
+- ✅ **97% test coverage** - 438 tests across 16 test suites
+- ✅ **API complete** - 40+ endpoints implemented and documented
 - ✅ **Error handling** - Comprehensive error responses
 - 🔄 **Beta stage** - Ready for community testing
 - ⚠️ **Needs production validation** - Not yet battle-tested at scale
@@ -35,12 +35,17 @@ A fast API for Idena with **real-time queries** and **optional historical data s
 ### What Works
 - ✅ Express server with security middleware
 - ✅ Real-time endpoints (identity, balance, transaction, block, epoch)
-- ✅ **NEW**: Historical endpoints with SQLite sync (transaction history)
+- ✅ Historical endpoints with SQLite sync (transaction history)
+- ✅ **Epoch & identity state tracking** - Historical identity states per epoch
+- ✅ **Rewards & validation data** - Ceremony results, rewards by type
+- ✅ **Balance change tracking** - Full balance history (tx_in, tx_out, rewards, penalties)
+- ✅ **Invite tracking** - Sent/received invites, activation status
+- ✅ **Network statistics** - Online count, coin supply, identity breakdown
 - ✅ Redis caching with graceful degradation
 - ✅ RPC client with error handling
 - ✅ Docker deployment
 - ✅ Swagger API documentation
-- ✅ Comprehensive test suite (100% coverage)
+- ✅ Comprehensive test suite (438 tests)
 
 ### What Needs Work
 - ⚠️ Production deployment validation
@@ -64,6 +69,11 @@ A **lightweight API** for Idena with two operation modes:
 - ✅ Everything from Mode 1, plus:
 - ✅ Transaction history per address
 - ✅ Block/transaction lookup from local database
+- ✅ **Historical identity states** - Track state changes per epoch
+- ✅ **Epoch data** - Rewards, validation results, ceremony stats
+- ✅ **Balance tracking** - Full balance change history
+- ✅ **Invite tracking** - Sent/received invites with status
+- ✅ **Network stats** - Online identities, coin supply
 - ✅ Background sync to SQLite (~2-4 hours initial sync)
 - ✅ Parallel fetching (~12,000 blocks/min)
 
@@ -73,26 +83,29 @@ A **lightweight API** for Idena with two operation modes:
 |---------|----------------|--------------------------|-------------------|
 | Current identity/balance | ✅ | ✅ | ✅ |
 | Transaction history | ❌ | ✅ | ✅ |
-| Historical identity states | ❌ | ❌ | ✅ |
-| Past epoch data | ❌ | ❌ | ✅ |
+| Historical identity states | ❌ | ✅ | ✅ |
+| Past epoch data | ❌ | ✅ | ✅ |
+| Rewards & validation | ❌ | ✅ | ✅ |
+| Balance change history | ❌ | ✅ | ✅ |
+| Invite tracking | ❌ | ✅ | ✅ |
+| Network statistics | ❌ | ✅ | ✅ |
+| Penalty tracking | ❌ | ✅ | ✅ |
 | Full-text search | ❌ | ❌ | ✅ |
-| Analytics/aggregations | ❌ | ❌ | ✅ |
 | Smart contract queries | ❌ | ❌ | ✅ |
 | Flip content | ❌ | ❌ | ✅ |
 | **Deployment time** | Minutes | 2-4 hours | 100+ hours |
 | **Database** | None | SQLite (~10GB) | PostgreSQL (~100GB) |
 | **Sync speed** | N/A | ~12,000 blocks/min | ~1,000 blocks/min |
+| **Response time** | ~25ms | ~25ms | ~190ms |
 
 ## ⚠️ Limitations
 
 **idena-lite-api CANNOT provide:**
 
-- ❌ **Historical identity states** - "Was this address Human in epoch 150?" requires full indexer
-- ❌ **Historical epoch data** - Rewards, ceremony results from past epochs
 - ❌ **Full-text search** - Search across addresses, transactions, etc.
-- ❌ **Analytics** - Identity counts over time, staking trends, network stats
 - ❌ **Smart contract data** - Contract state, calls, deployments
 - ❌ **Flip content** - IPFS flip images and answers
+- ❌ **Complex analytics** - Advanced aggregations and trends
 
 **Need these features?** Use [idena-indexer-api](https://github.com/idena-network/idena-indexer-api) (requires PostgreSQL, 100+ hours sync).
 
@@ -178,11 +191,16 @@ GET /api/epoch/intervals
 ```
 
 ### Historical Endpoints (requires `HISTORY_ENABLED=true`)
+
+#### Sync & Status
 ```bash
 # Get sync status
 GET /api/history/status
-# Response: { "enabled": true, "running": true, "lastSyncedBlock": 5000000, "progress": "45.2%" }
+# Response: { "enabled": true, "running": true, "lastSyncedBlock": 5000000, "progress": "45.2%", "database": {...} }
+```
 
+#### Transaction History
+```bash
 # Get transaction history for an address
 GET /api/history/address/0x1234.../transactions?limit=50&offset=0
 # Response: { "data": [...], "total": 150, "hasMore": true }
@@ -192,6 +210,89 @@ GET /api/history/block/5000000
 
 # Get historical transaction from local database
 GET /api/history/transaction/0xabcd...
+```
+
+#### Epoch Endpoints
+```bash
+# Get specific epoch details
+GET /api/epoch/:epoch
+
+# List epochs (paginated)
+GET /api/epochs?limit=10&offset=0
+
+# Get identities for an epoch
+GET /api/epoch/:epoch/identities
+
+# Get epoch rewards summary
+GET /api/epoch/:epoch/rewards
+
+# Get epoch penalties
+GET /api/epoch/:epoch/penalties
+GET /api/epoch/:epoch/penalties/summary
+
+# Get epoch invites
+GET /api/epoch/:epoch/invites
+GET /api/epoch/:epoch/invites/summary
+```
+
+#### Identity State History
+```bash
+# Get identity state history across epochs
+GET /api/history/identity/0x1234.../epochs
+
+# Get identity state at specific epoch
+GET /api/history/identity/0x1234.../state/:epoch
+
+# Get identity rewards history
+GET /api/history/identity/0x1234.../rewards
+GET /api/history/identity/0x1234.../rewards/:epoch
+
+# Get identity validation history
+GET /api/history/identity/0x1234.../validation
+GET /api/history/identity/0x1234.../validation/:epoch
+
+# Get identity invite history
+GET /api/history/identity/0x1234.../invites?type=sent|received&status=pending|activated
+```
+
+#### Address Endpoints
+```bash
+# Get full address info (balance, stake, identity state, tx counts)
+GET /api/address/0x1234...
+
+# Get balance change history
+GET /api/address/0x1234.../balance/changes?type=tx_in|tx_out|reward|penalty
+
+# Get address penalties
+GET /api/address/0x1234.../penalties?epoch=150
+
+# Get address state history across epochs
+GET /api/history/address/0x1234.../states
+GET /api/history/address/0x1234.../state/:epoch
+```
+
+#### Network Statistics
+```bash
+# Get online identities count
+GET /api/stats/online
+
+# Get coin supply statistics
+GET /api/stats/coins
+
+# Get identity breakdown by state
+GET /api/stats/identities
+
+# Get network summary
+GET /api/stats/summary
+
+# Get epoch statistics (invites, penalties, etc.)
+GET /api/stats/epoch/:epoch
+```
+
+#### Invite Lookup
+```bash
+# Get invite by hash
+GET /api/history/invite/:hash
 ```
 
 ## 📖 API Documentation
@@ -546,7 +647,12 @@ tests/
 ├── balance.test.js     # Balance endpoint tests
 ├── transaction.test.js # Transaction endpoint tests
 ├── block.test.js       # Block endpoint tests
-├── epoch.test.js       # Epoch endpoint tests
+├── epoch.test.js       # Epoch endpoint tests (+ historical epochs)
+├── history.test.js     # Historical data endpoint tests
+├── address.test.js     # Address endpoint tests
+├── stats.test.js       # Network statistics endpoint tests
+├── db.test.js          # SQLite database unit tests
+├── sync.test.js        # Background sync service tests
 ├── rateLimit.test.js   # Rate limiting tests
 └── integration.test.js # End-to-end API tests
 ```
@@ -678,4 +784,4 @@ Special thanks to:
 **⚡ Status**: Beta - Ready for Community Testing
 **🔄 Version**: 0.2.0-beta
 **👥 Maintainer**: Idena Community
-**✅ Test Coverage**: 96% (215 tests)
+**✅ Test Coverage**: 97% (438 tests across 16 suites)
